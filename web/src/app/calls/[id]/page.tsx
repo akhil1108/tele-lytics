@@ -18,7 +18,7 @@ import { ToneSummary, TranscriptView } from "@/components/TranscriptView";
 import { Badge, Button, Card, EmptyState, ErrorNote, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { dateTime, duration, policyReason, titleCase } from "@/lib/format";
+import { dateTime, directionLabel, duration, policyReason, titleCase } from "@/lib/format";
 import type { ActionItem } from "@/lib/types";
 
 export default function CallDetailPage() {
@@ -84,7 +84,11 @@ export default function CallDetailPage() {
             {data.customer_name ?? data.customer_number}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-muted">
-            <span className="capitalize">{data.direction} call</span>
+            <span>
+              {data.direction === "unknown"
+                ? "Direction unknown"
+                : `${directionLabel(data.direction)} call`}
+            </span>
             <span className="tabular">{data.customer_number}</span>
             <span>·</span>
             <span>{data.agent_name}</span>
@@ -189,6 +193,14 @@ export default function CallDetailPage() {
                 />
                 <dl className="mt-3 space-y-1 text-xs">
                   <Row
+                    label="Source"
+                    value={
+                      data.call_metadata?.source === "device_recording_import"
+                        ? "Imported from handset"
+                        : "Recorded in app"
+                    }
+                  />
+                  <Row
                     label="Consent captured"
                     value={data.recording.consent_captured ? "Yes" : "No"}
                   />
@@ -202,6 +214,16 @@ export default function CallDetailPage() {
                     }
                   />
                 </dl>
+
+                {data.call_metadata?.source === "device_recording_import" && (
+                  <p className="mt-3 text-xs text-ink-muted">
+                    {/* Without this, "consent captured: No" reads as a compliance
+                        failure rather than a fact about how the file arrived. */}
+                    This recording came from the handset&apos;s own dialler, which
+                    carries no record of a consent announcement. Recording was still
+                    checked against this number&apos;s policy before it was accepted.
+                  </p>
+                )}
               </>
             ) : data.recording?.status === "purged" ? (
               <p className="text-sm text-ink-muted">

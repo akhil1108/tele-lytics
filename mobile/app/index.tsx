@@ -1,9 +1,10 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { Platform, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import { Button, Card, Loading, Pill, Row, Screen, useTheme } from "@/components/ui";
 import { api } from "@/lib/api";
+import { recordingFolder, scanRecordingFolder } from "@/lib/importer";
 import { useSession } from "@/lib/session";
 import { STATUS_LABEL, duration, statusColor } from "@/lib/theme";
 import type { AgentStatus, DaySummary } from "@/lib/types";
@@ -19,6 +20,8 @@ export default function HomeScreen() {
   const [summary, setSummary] = useState<DaySummary | null>(null);
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [newRecordings, setNewRecordings] = useState<number | null>(null);
+  const [folderSet, setFolderSet] = useState(false);
 
   useEffect(() => uploadQueue.subscribe(setPending), []);
 
@@ -33,9 +36,21 @@ export default function HomeScreen() {
       setSummary(await api.summary());
     } catch {
       /* offline: keep whatever was last shown rather than blanking the screen */
-    } finally {
-      setRefreshing(false);
     }
+
+    // Surface a backlog without making the agent go looking for it — an
+    // un-imported recording is a call the dashboard never sees.
+    if (Platform.OS === "android") {
+      try {
+        const configured = await recordingFolder.get();
+        setFolderSet(Boolean(configured));
+        const scan = configured ? await scanRecordingFolder() : null;
+        setNewRecordings(scan?.detected.length ?? null);
+      } catch {
+        setNewRecordings(null);
+      }
+    }
+    setRefreshing(false);
   }, [session]);
 
   useEffect(() => {
@@ -77,9 +92,32 @@ export default function HomeScreen() {
           </View>
         </Card>
 
+        {Platform.OS === "android" && (
+          <Card
+            style={{ marginTop: 16 }}
+            title={
+              !folderSet
+                ? "Set up call recording import"
+                : newRecordings
+                  ? `${newRecordings} new recording${newRecordings === 1 ? "" : "s"} to import`
+                  : "Recordings up to date"
+            }
+            subtitle={
+              !folderSet
+                ? "Point the app at the folder your dialler saves calls to"
+                : undefined
+            }
+          >
+            <Button
+              label={!folderSet ? "Choose folder" : "Import recordings"}
+              variant={!folderSet || newRecordings ? "primary" : "secondary"}
+              onPress={() => router.push("/import")}
+            />
+          </Card>
+        )}
+
         <Button
-          label="Record a call"
-          variant="primary"
+          label="Record a call in the app"
           onPress={() => router.push("/call")}
           style={{ marginTop: 16 }}
         />
@@ -121,18 +159,11 @@ export default function HomeScreen() {
           />
         </Card>
 
-        <View style={{ flexDirection: "row", gap: 12, marginTop: 16 }}>
-          <Button
-            label="Import a recording"
-            onPress={() => router.push("/import")}
-            style={{ flex: 1 }}
-          />
-          <Button
-            label="Settings"
-            onPress={() => router.push("/settings")}
-            style={{ flex: 1 }}
-          />
-        </View>
+        <Button
+          label="Settings"
+          onPress={() => router.push("/settings")}
+          style={{ marginTop: 16 }}
+        />
       </Screen>
     </ScrollView>
   );

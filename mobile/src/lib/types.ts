@@ -1,5 +1,7 @@
 export type AgentStatus = "offline" | "available" | "on_call" | "wrap_up" | "break";
-export type Direction = "inbound" | "outbound";
+// "unknown" exists because imported recordings usually cannot tell us which
+// way the call went — most OEM recorders leave it out of the filename.
+export type Direction = "inbound" | "outbound" | "unknown";
 
 export interface DeviceSession {
   device_token: string;

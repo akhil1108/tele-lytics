@@ -233,3 +233,32 @@ async def test_supervisor_cannot_change_configuration(
         json={"display_name": "Nope", "phone_number": "+919222222222"},
     )
     assert blocked_agent.status_code == 403
+
+
+async def test_unknown_direction_calls_count_in_the_total_but_not_the_split(
+    session: AsyncSession, org, agent
+) -> None:
+    """Imported calls with no known direction must not inflate either side.
+
+    Reporting them as inbound would be a fabricated split; leaving them out of
+    the total would under-count the day's work. They belong in the total only.
+    """
+    now = datetime.now(UTC)
+    for direction in ("inbound", "outbound", "unknown", "unknown"):
+        session.add(
+            Call(
+                org_id=org.id, agent_id=agent.id, direction=direction,
+                agent_number=agent.phone_number, customer_number="+919000000007",
+                started_at=now - timedelta(minutes=2), duration_seconds=90,
+            )
+        )
+    await session.commit()
+
+    start, end = resolve_range(days=7)
+    result = await metrics.overview(session, org.id, start, end)
+
+    assert result.calls_total == 4
+    assert result.calls_inbound == 1
+    assert result.calls_outbound == 1
+    # The split deliberately does not sum to the total.
+    assert result.calls_inbound + result.calls_outbound < result.calls_total

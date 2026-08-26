@@ -184,6 +184,10 @@ class JobOut(ORMModel):
 
 class CallDetail(CallOut):
     agent_name: str | None = None
+    # Carries how the call reached us — an imported dialler recording cannot
+    # attest that a consent announcement was made, and the dashboard needs to
+    # say why rather than leaving it looking like a compliance failure.
+    call_metadata: dict = Field(default_factory=dict)
     agent_team: str | None = None
     recording: RecordingOut | None = None
     transcript: TranscriptOut | None = None

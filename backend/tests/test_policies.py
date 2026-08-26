@@ -152,3 +152,82 @@ async def test_dashboard_lookup_matches_handset_decision(
     )
     assert response.status_code == 200
     assert response.json()["should_record"] is True
+
+
+async def test_unknown_direction_skips_the_direction_gates(
+    session: AsyncSession, org, agent, recording_policy
+) -> None:
+    """An imported recording rarely says which way the call went.
+
+    The per-direction switches govern capture, so they must not block an
+    import that already happened — but the number-level switch still must.
+    """
+    recording_policy.record_outbound = False
+    await session.commit()
+
+    decision = await policies.decide(
+        session, org_id=org.id, agent_number=agent.phone_number, direction="unknown"
+    )
+    assert decision.should_record is True
+
+
+async def test_unknown_direction_still_obeys_the_number_switch(
+    session: AsyncSession, org, agent, recording_policy
+) -> None:
+    recording_policy.recording_enabled = False
+    await session.commit()
+
+    decision = await policies.decide(
+        session, org_id=org.id, agent_number=agent.phone_number, direction="unknown"
+    )
+    assert decision.should_record is False
+    assert decision.reason == "recording_disabled_for_number"
+
+
+async def test_unknown_direction_still_obeys_a_customer_opt_out(
+    session: AsyncSession, org, agent, recording_policy
+) -> None:
+    session.add(
+        PhoneNumberPolicy(
+            org_id=org.id, e164=CUSTOMER_NUMBER, kind="customer", recording_enabled=False
+        )
+    )
+    await session.commit()
+
+    decision = await policies.decide(
+        session,
+        org_id=org.id,
+        agent_number=agent.phone_number,
+        customer_number=CUSTOMER_NUMBER,
+        direction="unknown",
+    )
+    assert decision.should_record is False
+    assert decision.reason == "customer_opted_out"
+
+
+async def test_both_directions_off_refuses_an_unknown_direction_import(
+    session: AsyncSession, org, agent, recording_policy
+) -> None:
+    recording_policy.record_inbound = False
+    recording_policy.record_outbound = False
+    await session.commit()
+
+    decision = await policies.decide(
+        session, org_id=org.id, agent_number=agent.phone_number, direction="unknown"
+    )
+    assert decision.should_record is False
+    assert decision.reason == "no_direction_recorded"
+
+
+async def test_handset_can_log_a_call_with_an_unknown_direction(
+    client: AsyncClient, device_headers: dict
+) -> None:
+    from tests.conftest import call_payload
+
+    response = await client.post(
+        "/v1/mobile/calls",
+        headers=device_headers,
+        json=call_payload(direction="unknown", external_ref="imported-1"),
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["direction"] == "unknown"

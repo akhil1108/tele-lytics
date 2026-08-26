@@ -263,3 +263,74 @@ async def test_transcription_without_a_recording_is_not_retried(
     with pytest.raises(ProviderError) as caught:
         await run_transcription(session, call["id"])
     assert caught.value.retryable is False
+
+
+async def test_imported_dialler_recording_runs_the_full_pipeline(
+    client: AsyncClient,
+    session: AsyncSession,
+    device_headers: dict,
+    recording_policy,
+) -> None:
+    """The Android import path: a call the handset's own dialler recorded.
+
+    Direction is unknown, consent was not announced in-app, and the start time
+    comes from the filename — all of which must survive into the record.
+    """
+    started = "2026-08-20T09:14:00+00:00"
+    logged = await client.post(
+        "/v1/mobile/calls",
+        headers=device_headers,
+        json={
+            "external_ref": "device-1-file-Call recording 9000000001_260820_091400.m4a",
+            "direction": "unknown",
+            "customer_number": "+919000000001",
+            "started_at": started,
+            "status": "completed",
+            "recording_expected": True,
+            "metadata": {
+                "source": "device_recording_import",
+                "original_filename": "Call recording 9000000001_260820_091400.m4a",
+                "number_source": "filename",
+                "direction_source": "assumed",
+            },
+        },
+    )
+    assert logged.status_code == 201, logged.text
+    call_id = logged.json()["id"]
+    assert logged.json()["direction"] == "unknown"
+
+    upload = await client.post(
+        f"/v1/mobile/calls/{call_id}/recording",
+        headers=device_headers,
+        files={"file": ("call.m4a", WAV_BYTES, "audio/mp4")},
+        data={"consent_captured": "false"},
+    )
+    assert upload.status_code == 201
+    # An imported file cannot attest to a consent announcement.
+    assert upload.json()["consent_captured"] is False
+
+    await run_transcription(session, call_id)
+    analysis = await run_analysis(session, call_id)
+    assert analysis.summary
+
+    detail = await client.get(f"/v1/calls/{call_id}", headers=device_headers)
+    assert detail.status_code == 401  # a device token is not a dashboard token
+
+
+async def test_reimporting_the_same_file_maps_to_the_same_call(
+    client: AsyncClient, device_headers: dict, recording_policy
+) -> None:
+    """A crash mid-import must not create a duplicate call for one recording."""
+    payload = {
+        "external_ref": "device-1-file-Call recording 9000000001_260820_091400.m4a",
+        "direction": "unknown",
+        "customer_number": "+919000000001",
+        "started_at": "2026-08-20T09:14:00+00:00",
+        "status": "completed",
+        "recording_expected": True,
+    }
+    first = await client.post("/v1/mobile/calls", headers=device_headers, json=payload)
+    second = await client.post("/v1/mobile/calls", headers=device_headers, json=payload)
+
+    assert first.status_code == second.status_code == 201
+    assert first.json()["id"] == second.json()["id"]

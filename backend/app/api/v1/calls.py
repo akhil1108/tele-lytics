@@ -225,6 +225,7 @@ async def get_call(
         **CallOut.model_validate(call).model_dump(),
         agent_name=agent.display_name if agent else None,
         agent_team=agent.team if agent else None,
+        call_metadata=call.call_metadata or {},
         recording=RecordingOut.model_validate(recording) if recording else None,
         transcript=TranscriptOut.model_validate(transcript) if transcript else None,
         analysis=AnalysisOut.model_validate(analysis) if analysis else None,

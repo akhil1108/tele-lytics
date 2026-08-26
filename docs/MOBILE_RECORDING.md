@@ -1,100 +1,157 @@
-# Call recording on mobile: what actually works
+# Call recording on mobile
 
-This is the constraint most call-analytics projects discover late, so it is
-stated plainly up front.
+## The short version
 
-## Neither platform lets an app record the carrier call
+On Android, the workflow that works is:
 
-**Android.** The `VOICE_CALL`, `VOICE_DOWNLINK` and `VOICE_UPLINK` audio
-sources have required the privileged `CAPTURE_AUDIO_OUTPUT` permission since
-Android 10 (API 29). It is `signature|privileged` — granted only to apps signed
-with the platform key or installed in the privileged system partition. A
-sideloaded or Play-distributed app cannot obtain it. Google Play policy also
-prohibits using the accessibility API to work around this, and enforces it.
+1. The agent turns on call recording **in the phone's own dialler**.
+2. The agent grants this app read access to the folder those recordings land
+   in — once, via the system folder picker.
+3. The app scans that folder, reads the customer number and the time out of
+   each filename, and uploads new recordings to the pipeline.
 
-**iOS.** There is no public API for recording a phone call, at any entitlement
-tier. CallKit gives you call *events*, never call *audio*.
+The app also has an in-app microphone recorder, but that is the fallback. The
+import path gives better audio, needs no special permission, and does not
+require the agent to remember to press anything during a call.
 
-Any product claiming otherwise is doing one of the four things below.
+## Why the phone's own recorder, and not this app
 
-## The four routes that do work
+**No app can record the carrier voice call.** Android's `VOICE_CALL`,
+`VOICE_DOWNLINK` and `VOICE_UPLINK` audio sources have required the privileged
+`CAPTURE_AUDIO_OUTPUT` permission since Android 10 (API 29). It is
+`signature|privileged` — granted only to apps signed with the platform key or
+shipped in the system partition. The phone's built-in dialler *is* such an app.
+This one is not, and Play policy separately forbids using the accessibility API
+to work around it.
 
-### 1. Microphone capture — what this app ships
+So the OEM recorder gets both sides of the call at full quality; a third-party
+app pointed at the microphone gets the agent clearly and the customer faintly.
+Reading the OEM's output is strictly better.
 
-Records through the handset microphone while the call runs. Ships today, works
-on both platforms, needs no special provisioning.
+iOS has no equivalent. There is no call-recording API at any entitlement tier,
+and one app cannot read another's files. On iOS, use the in-app recorder on
+speakerphone, or record server-side (below).
 
-- **Quality:** good for the agent, quieter for the customer. Speakerphone
-  improves the far side considerably.
-- **Consequence:** the transcript carries per-segment confidence, and
-  diarisation is a little less certain than a two-channel tap.
-- **Caveat:** iOS suspends microphone capture for a third-party app during an
-  active cellular call. In practice this means iOS agents must use speakerphone
-  with the app in the foreground, or route through route 2 or 4.
+## How folder access works
 
-Implemented in `mobile/src/lib/recorder.ts`.
+The app uses the **Storage Access Framework**: the agent picks the folder
+through the system UI and the app receives a persistable read grant for that
+tree. It survives restarts and reboots.
 
-### 2. VoIP calls placed inside the app
+This is deliberate rather than convenient. The alternative,
+`MANAGE_EXTERNAL_STORAGE` ("All files access"), grants the whole filesystem and
+Google will not approve it for an app of this kind. SAF grants exactly one
+folder.
 
-If calls go through a softphone your organisation controls, the app owns the
-audio session and can capture both legs at full quality. Adding a SIP or WebRTC
-stack to this app is the natural extension: the recorder interface stays the
-same, only the audio source changes.
+**One folder is out of reach**: the Google Phone app on Pixel writes to
+`Android/data/com.google.android.dialer/files/CallRecordings`, and Android 11+
+blocks SAF from `Android/data` entirely. Pixel fleets need a different dialler,
+a device-owner build, or server-side recording.
 
-### 3. Importing recordings the device already made
+### Folders the app offers by default
 
-Many enterprise diallers, Android OEM phone apps, and MDM-managed device-owner
-builds already write call recordings to storage — that last case *does* hold
-`CAPTURE_AUDIO_OUTPUT`. The app's **Import** screen picks those files up and
-feeds them into the same pipeline.
+| Manufacturer | Folder |
+| ------------ | ------ |
+| Samsung | `Recordings/Call` |
+| Xiaomi / Redmi / POCO | `MIUI/sound_recorder/call_rec` |
+| OnePlus / Oppo / Realme | `Recordings/Call Recordings` |
+| Oppo (alternate) | `Music/Recordings/Call Recordings` |
+| Vivo | `Record/Call` |
+| Cube ACR | `CubeCallRecorder/All` |
+| Truecaller | `Truecaller/Recordings` |
 
-This is the highest-quality route that requires no change to this codebase, and
-it is the one to reach for in a managed fleet.
+Anything else is reachable with **Browse for the folder**.
 
-Implemented in `mobile/app/import.tsx`.
+## Reading the filename
 
-### 4. Carrier or PBX-side recording
+Every recorder encodes the number and time differently. `mobile/src/lib/callRecordings.ts`
+handles the formats below, and `npm test` in `mobile/` covers each one.
 
-The best audio quality, and no handset involvement at all. Your telephony
-provider (Twilio, Exotel, Knowlarity, Asterisk, a SIP trunk with a recording
-fork) writes the recording, and a small server-side connector posts it to the
-same upload endpoint the handset uses.
+| Recorder | Filename | Read as |
+| -------- | -------- | ------- |
+| Samsung | `Call recording 9876543210_250826_143012.m4a` | number + time |
+| Samsung (saved contact) | `Call recording Rohit Verma_250826_143012.m4a` | name + time, **number needed** |
+| Xiaomi | `1756218612000_9876543210.mp3` | epoch + number |
+| Oppo / OnePlus | `Call@9876543210_20260826143012.amr` | number + time |
+| Vivo | `9876543210_20260826_143012.wav` | number + time |
+| Google Phone | `+919876543210 2026-08-26 14:30:12.m4a` | E.164 + time |
+| Cube ACR and similar | `20260826_143012_+919876543210_out.mp3` | time + number + **direction** |
+| Truecaller | `Truecaller_9876543210_20260826_143012.m4a` | number + time |
 
-Because the API is identical, routes 1, 3 and 4 can run side by side — a fleet
-where some agents are on managed devices and others are not works without any
-special casing.
+Two details that matter:
 
-## What the app does about consent
+**Ten digits is ambiguous.** An Indian mobile number and a Unix timestamp in
+seconds are both ten digits. They are told apart by the first digit: epoch
+seconds for any plausible year start with `1`, and no national mobile number
+does.
 
-Recording never begins on a guess.
+**Nothing is guessed.** A file whose number cannot be read is listed separately
+with a field to type it into. A recording filed against the wrong customer is
+worse than one the agent had to label, so the app never picks a number it is
+not sure of. Same for the date: an impossible one (`20260231`) or one from
+before smartphones is rejected rather than rolled over.
 
-1. Before every call, the app calls `GET /v1/mobile/recording-policy` with the
-   other party's number and the direction.
-2. The server answers with a decision and a reason. Recording is refused unless
-   an administrator explicitly enabled the agent's number, and an explicit
-   customer opt-out overrides that.
-3. When the policy says consent is required, the app shows the announcement to
-   read out and will not unlock the record control until the agent confirms
-   they read it.
-4. That confirmation is uploaded with the audio as `consent_captured` and shown
-   on the call in the dashboard.
+## Direction
 
-Imported files are always marked `consent_captured: false` — nothing in the
-file records that an announcement was made, and claiming otherwise would put a
-false statement into a compliance record.
+Most recorders do not record whether a call was incoming or outgoing. Rather
+than defaulting to one and reporting a fabricated inbound/outbound split, calls
+imported without that information are stored as **`unknown`**.
+
+The dashboard shows them as "Direction unknown", counts them in the call total,
+and leaves them out of the inbound/outbound figures — so those two deliberately
+do not sum to the total. An agent who knows their line is inbound-only can set
+a default in the import screen, and the call metadata records whether the
+direction came from the filename or was assumed.
+
+## Consent and policy
+
+An already-recorded file still goes through the policy check before it is
+uploaded — the question changes from "may I record this?" to "may I ingest
+this?", and the answer still has to be yes.
+
+- A customer who has opted out has their recording **refused at import** and
+  never uploaded. The agent is told why, and the file stays on their phone.
+- A number whose recording is switched off is refused the same way.
+- The per-direction switches govern capture, so they do not block an import
+  whose direction is unknown. Turning *both* off does.
+
+Imported files are always marked `consent_captured: false`, because nothing in
+the file records that an announcement was made. The dashboard says so in words
+next to the recording, so it reads as a fact about the file's origin rather
+than a compliance failure.
 
 **This is a mechanism, not legal advice.** Two-party consent rules differ by
-jurisdiction, and in India the DPDP Act 2023 and TRAI rules impose their own
+jurisdiction, and India's DPDP Act 2023 and TRAI rules impose their own
 requirements. Configure the policy for the law you operate under.
 
-## Wiring up route 4
+## Not uploading the same call twice
 
-A connector needs three calls. It authenticates as a device, so provision one
-pairing code per agent line and store the resulting tokens.
+Two independent guards:
+
+- **On the handset**, a ledger of imported filenames. A re-scan skips them.
+  Settings has a "offer every recording again" control for the case where a
+  batch was filed against the wrong numbers.
+- **On the server**, `external_ref` — a short hash of the device id and the
+  filename. Re-sending it returns the existing call rather than creating a
+  second one, which covers a crash between logging the call and uploading its
+  audio.
+
+The original file in the recordings folder is never modified or deleted. It is
+the agent's file. The app copies it to its own cache to upload, and deletes
+only that copy once the server has accepted it.
+
+## Server-side recording
+
+Best audio quality, no handset involvement, and the right answer for a fleet
+with a recording-capable PBX or carrier (Twilio, Exotel, Knowlarity, Asterisk,
+a SIP trunk with a recording fork).
+
+A connector needs two calls. It authenticates as a device, so provision one
+pairing code per agent line and store the tokens.
 
 ```bash
 # 1. Log the call
-curl -X POST "$API/v1/mobile/calls" \
+CALL_ID=$(curl -sX POST "$API/v1/mobile/calls" \
   -H "Authorization: Bearer $DEVICE_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -104,7 +161,7 @@ curl -X POST "$API/v1/mobile/calls" \
         "started_at": "2026-08-26T09:14:00Z",
         "ended_at":   "2026-08-26T09:18:32Z",
         "recording_expected": true
-      }'
+      }' | jq -r .id)
 
 # 2. Upload the audio — this starts the pipeline
 curl -X POST "$API/v1/mobile/calls/$CALL_ID/recording" \
@@ -112,9 +169,11 @@ curl -X POST "$API/v1/mobile/calls/$CALL_ID/recording" \
   -F 'file=@call.wav;type=audio/wav' \
   -F 'duration_seconds=272' \
   -F 'consent_captured=true'
-
-# 3. Nothing. The transcript and analysis appear in the dashboard on their own.
 ```
 
-`external_ref` makes step 1 idempotent, so a connector that retries after a
-network drop does not create duplicate calls.
+`external_ref` makes step 1 idempotent, so a connector retrying after a network
+drop does not create duplicate calls.
+
+Because the API is identical, handset import and server-side recording can run
+side by side — a fleet where some agents are on managed devices and others are
+not needs no special casing.

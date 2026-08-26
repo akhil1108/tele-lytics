@@ -29,7 +29,7 @@ python -m scripts.seed --reset --calls 60
 ## Tests
 
 ```bash
-pytest          # 74 tests, in-memory SQLite, no external services
+pytest          # 82 tests, in-memory SQLite, no external services
 ruff check .
 ```
 

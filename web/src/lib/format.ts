@@ -94,6 +94,17 @@ export function policyReason(reason: string): string {
   return POLICY_REASONS[reason] ?? reason.replaceAll("_", " ");
 }
 
+/** Imported recordings often carry no direction; say so rather than showing a bare word. */
+export const DIRECTION_LABELS: Record<string, string> = {
+  inbound: "Inbound",
+  outbound: "Outbound",
+  unknown: "Direction unknown",
+};
+
+export function directionLabel(direction: string): string {
+  return DIRECTION_LABELS[direction] ?? titleCase(direction);
+}
+
 export function titleCase(value: string): string {
   return value
     .replaceAll("_", " ")

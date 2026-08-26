@@ -22,6 +22,7 @@ import {
   count,
   dateTime,
   decimal,
+  directionLabel,
   duration,
 } from "@/lib/format";
 import type { CallListItem, ProcessingStatus } from "@/lib/types";
@@ -38,6 +39,7 @@ const DIRECTIONS = [
   { value: "", label: "Any direction" },
   { value: "inbound", label: "Inbound" },
   { value: "outbound", label: "Outbound" },
+  { value: "unknown", label: "Direction unknown" },
 ];
 const SENTIMENTS = [
   { value: "", label: "Any sentiment" },
@@ -189,8 +191,8 @@ export default function CallsPage() {
                       >
                         {dateTime(call.started_at)}
                       </Link>
-                      <span className="ml-2 text-xs capitalize text-ink-muted">
-                        {call.direction}
+                      <span className="ml-2 text-xs text-ink-muted">
+                        {directionLabel(call.direction)}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-ink-secondary">

@@ -27,6 +27,10 @@ class AgentStatus(StrEnum):
 class CallDirection(StrEnum):
     INBOUND = "inbound"
     OUTBOUND = "outbound"
+    # Imported recordings often cannot tell us which way the call went — most
+    # OEM recorders do not put it in the filename. Recording that honestly
+    # beats defaulting to one and reporting a fabricated inbound/outbound split.
+    UNKNOWN = "unknown"
 
 
 class CallStatus(StrEnum):

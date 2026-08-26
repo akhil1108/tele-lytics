@@ -10,14 +10,14 @@ Two applications over one API:
 | Application         | Who uses it   | What it does                                                        |
 | ------------------- | ------------- | ------------------------------------------------------------------- |
 | **Admin dashboard** | Supervisors   | Live floor status, call volume, transcripts, insight, recording policy |
-| **Agent app**       | Agents        | Records calls where policy allows, uploads them, shows today's figures |
+| **Agent app**       | Agents        | Imports the dialler's call recordings, uploads them, shows today's figures |
 
 ## What happens to a call
 
 ```
-handset ──▶ policy check ──▶ consent ──▶ record ──▶ upload
-                                                      │
-                                        ┌─────────────┴──────────────┐
+phone dialler records ──▶ app scans folder ──▶ policy check ──▶ upload
+                                                                 │
+                                        ┌────────────────────────┴─────┐
                                         ▼                            ▼
                               stage 1: speech model        stage 2: insight model
                               transcript + tone            sentiment · filler words
@@ -82,12 +82,20 @@ Without Docker, see [`backend/README.md`](backend/README.md),
 the agent's own settings.** An unrecorded call is a gap in a report; an
 unlawfully recorded one is a liability. `docs/ARCHITECTURE.md` §Recording policy.
 
-**Neither Android nor iOS lets an app record the carrier call.** The privileged
-permission required on Android is not available to normal apps, and iOS has no
-API at all. This app records the microphone and can import recordings the
-dialler already made; carrier-side recording uses the same upload API and can
-run alongside. [`docs/MOBILE_RECORDING.md`](docs/MOBILE_RECORDING.md) has the
-full picture and the four routes that do work.
+**The phone's own dialler does the recording; the app imports it.** No
+third-party app can capture a carrier call — the Android permission for it is
+reserved for system apps and iOS has no API at all. The OEM dialler *does* hold
+it, so it produces better audio than anything this app could record. The agent
+grants one folder through the system picker and the app reads new recordings
+from it, pulling the customer number and time out of each filename.
+[`docs/MOBILE_RECORDING.md`](docs/MOBILE_RECORDING.md) has the filename formats,
+the one folder Android puts out of reach, and how to wire up carrier-side
+recording instead.
+
+**A call whose direction is unknown says so.** Most recorders do not put it in
+the filename, so imported calls are stored as `unknown` rather than defaulted to
+inbound. They count in the call total and are excluded from the inbound/outbound
+split — which therefore does not sum to the total, on purpose.
 
 **Filler counts are computed in code; the model only judges them.** A model
 asked to count produces numbers that drift between runs, and a dashboard whose
@@ -121,8 +129,9 @@ docs/       Architecture, speech-model contract, mobile recording constraints
 
 ## Status
 
-Working end to end and tested — 74 backend tests covering tenant isolation, the
-full pipeline, retries, policy resolution and every dashboard aggregate.
+Working end to end and tested — 82 backend tests covering tenant isolation, the
+full pipeline, retries, policy resolution and every dashboard aggregate, plus 24
+mobile tests over the recording-filename parser.
 
 Not yet built, and deliberately so: carrier-side recording connectors,
 cross-call speaker identification, and live mid-call analysis (a different

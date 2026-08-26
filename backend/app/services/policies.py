@@ -75,14 +75,26 @@ async def decide(
             retention_days=policy.retention_days,
         )
 
-    allowed = (
-        policy.record_inbound if direction == CallDirection.INBOUND else policy.record_outbound
-    )
+    # Direction gates govern *capture*. An import whose direction we could not
+    # determine is not blocked by them — the number-level switches above have
+    # already decided whether this line may be recorded at all.
+    if direction == CallDirection.UNKNOWN:
+        allowed = policy.record_inbound or policy.record_outbound
+    else:
+        allowed = (
+            policy.record_inbound
+            if direction == CallDirection.INBOUND
+            else policy.record_outbound
+        )
     if not allowed:
         return PolicyDecision(
             number=agent_number,
             should_record=False,
-            reason=f"{direction}_calls_not_recorded",
+            reason=(
+                "no_direction_recorded"
+                if direction == CallDirection.UNKNOWN
+                else f"{direction}_calls_not_recorded"
+            ),
             consent_required=policy.consent_required,
             consent_prompt=policy.consent_prompt,
             policy_id=policy.id,

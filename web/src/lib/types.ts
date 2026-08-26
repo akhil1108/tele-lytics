@@ -104,7 +104,7 @@ export interface Call {
   org_id: string;
   agent_id: string;
   external_ref: string | null;
-  direction: "inbound" | "outbound";
+  direction: "inbound" | "outbound" | "unknown";
   agent_number: string;
   customer_number: string;
   customer_name: string | null;
@@ -266,6 +266,7 @@ export interface Job {
 
 export interface CallDetail extends Call {
   agent_name: string | null;
+  call_metadata: Record<string, unknown>;
   agent_team: string | null;
   recording: Recording | null;
   transcript: Transcript | null;

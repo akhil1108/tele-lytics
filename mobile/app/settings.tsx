@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, View } from "react-native";
+import { Alert, Platform, ScrollView, Text, View } from "react-native";
 
 import { Button, Card, Note, Row, Screen, useTheme } from "@/components/ui";
 import { API_BASE_URL } from "@/lib/config";
+import { importedCount, recordingFolder, resetLedger } from "@/lib/importer";
 import { CallRecorder } from "@/lib/recorder";
 import { useSession } from "@/lib/session";
 import { STATUS_LABEL } from "@/lib/theme";
@@ -13,11 +14,35 @@ export default function SettingsScreen() {
   const { session, status, unpair } = useSession();
   const [micGranted, setMicGranted] = useState<boolean | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [folder, setFolder] = useState<string | null>(null);
+  const [imported, setImported] = useState(0);
 
   useEffect(() => {
     void CallRecorder.hasPermission().then(setMicGranted);
+    void recordingFolder.get().then(setFolder);
+    void importedCount().then(setImported);
     return uploadQueue.subscribe((queue) => setPendingCount(queue.length));
   }, []);
+
+  function confirmForgetImports() {
+    Alert.alert(
+      "Offer every recording again?",
+      "The app remembers which files it has already imported so a scan never " +
+        "uploads the same call twice. Clearing that will offer all of them again — " +
+        "useful if some were filed against the wrong number, but it can create " +
+        "duplicates otherwise.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            void resetLedger().then(() => setImported(0));
+          },
+        },
+      ],
+    );
+  }
 
   function confirmUnpair() {
     // Unpairing with recordings still queued loses them, so say so plainly.
@@ -58,13 +83,34 @@ export default function SettingsScreen() {
           )}
         </Card>
 
+        {Platform.OS === "android" && (
+          <Card style={{ marginTop: 16 }} title="Recording import">
+            <Row
+              label="Folder"
+              value={folder ? (decodeURIComponent(folder).split(":").pop() ?? "Set") : "Not set"}
+              valueColor={folder ? undefined : theme.warning}
+            />
+            <Row label="Files already imported" value={String(imported)} />
+            {imported > 0 && (
+              <Button
+                label="Offer every recording again"
+                onPress={confirmForgetImports}
+                style={{ marginTop: 12 }}
+              />
+            )}
+          </Card>
+        )}
+
         <Card style={{ marginTop: 16 }} title="How recording works">
           <Note>
             Neither Android nor iOS lets an app record the carrier call itself — that
             needs a system-level permission Google and Apple do not grant to normal
-            apps. This app records through the microphone, so put the call on speaker
-            for the best transcript. If your dialler already saves recordings to this
-            phone, use Import instead.
+            apps.
+            {"\n\n"}
+            On Android the reliable route is to turn on call recording in your phone&apos;s
+            own dialler and let this app import from the folder it writes to. In-app
+            recording captures the microphone instead, so put the call on speaker if you
+            use it.
           </Note>
         </Card>
 
