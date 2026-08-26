@@ -1,13 +1,28 @@
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
-apply plugin: 'expo-module-gradle-plugin'
 
 group = 'com.callanalytics.calllog'
 version = '0.1.0'
 
+// Expo SDK 51 wires local modules through expo-modules-core's Gradle plugin,
+// which supplies the Kotlin setup, the core dependencies and the SDK versions
+// the rest of the app is built against.
+def expoModulesCorePlugin = new File(
+  project(":expo-modules-core").projectDir.absolutePath,
+  "ExpoModulesCorePlugin.gradle"
+)
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+
 android {
   namespace "com.callanalytics.calllog"
   defaultConfig {
-    minSdkVersion 24
+    versionCode 1
+    versionName "0.1.0"
   }
+}
+
+dependencies {
+  implementation "androidx.core:core-ktx:1.13.1"
 }
