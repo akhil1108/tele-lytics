@@ -7,13 +7,17 @@
     "scheme": "callanalytics",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.example.callanalytics.agent",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "The app records your work calls so they can be transcribed and analysed for quality. Recording only happens on numbers your administrator has enabled, and only after the consent announcement.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -21,6 +25,7 @@
       "permissions": [
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
+        "READ_CALL_LOG",
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "FOREGROUND_SERVICE",

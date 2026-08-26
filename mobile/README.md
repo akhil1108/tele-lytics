@@ -27,43 +27,45 @@ npx expo run:ios
 | ---------- | ---------------------------------------------------------------- |
 | `/pair`    | Exchange a one-time code for a device token                      |
 | `/`        | Status toggle, today's figures, import backlog, upload badge     |
-| `/import`  | **Primary on Android** — scan the dialler's folder and import    |
+| `/tracking`| **Primary on Android** — call-log sync + optional recordings     |
 | `/call`    | Fallback — in-app recording: policy → consent → record → queue   |
 | `/uploads` | The upload queue, with per-item retry                            |
 | `/settings`| Folder, permissions, server, unpair                              |
 
 ## The Android flow
 
-The agent turns on call recording **in their phone's own dialler**, then points
-this app at the folder it writes to. From then on, a scan finds every new call,
-reads the customer number and time out of the filename, and imports it.
+Two layers, and the second is optional.
 
-This is better than recording in-app: the OEM dialler holds the privileged
-permission that captures both sides of a carrier call at full quality, which no
-third-party app can obtain. In-app recording captures the microphone, so the
-customer comes through faintly.
+**1. The call log** reports every call the phone made or took — number, exact
+duration, direction, and missed calls. This works on **every Android phone**,
+whether or not it can record anything.
 
-Folder access uses the Storage Access Framework — the agent grants one folder,
-once, and the grant persists. That is deliberate: the alternative
-(`MANAGE_EXTERNAL_STORAGE`) grants the whole filesystem and Play will not
-approve it here.
+**2. A recordings folder**, when the phone's dialler saves one, attaches audio
+to those calls so they also get a transcript and analysis. The agent grants the
+folder once through the system picker.
 
-Filename formats for Samsung, Xiaomi, Oppo/OnePlus, Vivo, Google Phone,
-Truecaller and Cube ACR are all handled — see
-[`docs/MOBILE_RECORDING.md`](../docs/MOBILE_RECORDING.md) for the table and the
-constraints, including the one folder Android puts out of reach.
+A phone that cannot record still reports its full call volume and talk time.
+That is deliberate: a dashboard that only knows about recorded calls
+under-reports the floor's work, and the gap is invisible.
 
-A file whose number cannot be read is listed for the agent to label rather than
-being guessed at. Nothing is filed against a number the app is not sure of.
+Recordings are matched to call-log entries by number and time, so a call takes
+its duration and direction from the log — which is exact — and only its audio
+from the file.
+
+[`docs/MOBILE_RECORDING.md`](../docs/MOBILE_RECORDING.md) has the filename
+formats, the matching rules, the `READ_CALL_LOG` distribution caveat, and the
+one folder Android puts out of reach.
 
 ## Tests
 
 ```bash
-npm test        # filename parsing — the part a handset nobody has still needs right
+npm test        # filename parsing and recording matching
 npm run typecheck
 ```
 
-The parser has no React Native imports, so it runs in plain Node.
+Both modules are free of React Native imports, so they run in plain Node — which
+is how a handset nobody owns still gets its filename format tested, and how the
+matching rules are checked without a device.
 
 ## How pairing works
 

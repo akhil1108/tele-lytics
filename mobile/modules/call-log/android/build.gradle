@@ -1,0 +1,13 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'com.callanalytics.calllog'
+version = '0.1.0'
+
+android {
+  namespace "com.callanalytics.calllog"
+  defaultConfig {
+    minSdkVersion 24
+  }
+}

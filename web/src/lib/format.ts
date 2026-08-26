@@ -88,7 +88,22 @@ export const POLICY_REASONS: Record<string, string> = {
   customer_opted_out: "Customer opted out of recording",
   inbound_calls_not_recorded: "Inbound calls are not recorded",
   outbound_calls_not_recorded: "Outbound calls are not recorded",
+  no_direction_recorded: "Recording is off for both call directions",
+  // Reported from the phone's call log rather than from a recording. These are
+  // real calls with real durations that simply have no audio — not failures.
+  device_cannot_record: "This handset cannot record calls",
+  no_recording_on_device: "No recording was saved for this call",
+  call_not_answered: "The call was not answered",
 };
+
+/** Whether a call is metadata-only by design rather than a pipeline failure. */
+export function isMetadataOnly(reason: string | null | undefined): boolean {
+  return (
+    reason === "device_cannot_record" ||
+    reason === "no_recording_on_device" ||
+    reason === "call_not_answered"
+  );
+}
 
 export function policyReason(reason: string): string {
   return POLICY_REASONS[reason] ?? reason.replaceAll("_", " ");

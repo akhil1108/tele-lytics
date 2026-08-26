@@ -75,13 +75,17 @@ export function Badge({
   children,
   color,
   className,
+  title,
 }: {
   children: ReactNode;
   color?: string;
   className?: string;
+  /** Hover explanation — used where a short label needs the full reason behind it. */
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={clsx(
         "inline-flex items-center gap-1.5 rounded-full border border-hairline px-2 py-0.5 text-xs font-medium text-ink-secondary",
         className,

@@ -18,7 +18,14 @@ import { ToneSummary, TranscriptView } from "@/components/TranscriptView";
 import { Badge, Button, Card, EmptyState, ErrorNote, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { dateTime, directionLabel, duration, policyReason, titleCase } from "@/lib/format";
+import {
+  dateTime,
+  directionLabel,
+  duration,
+  isMetadataOnly,
+  policyReason,
+  titleCase,
+} from "@/lib/format";
 import type { ActionItem } from "@/lib/types";
 
 export default function CallDetailPage() {
@@ -192,14 +199,7 @@ export default function CallDetailPage() {
                   onTimeUpdate={setPlayheadMs}
                 />
                 <dl className="mt-3 space-y-1 text-xs">
-                  <Row
-                    label="Source"
-                    value={
-                      data.call_metadata?.source === "device_recording_import"
-                        ? "Imported from handset"
-                        : "Recorded in app"
-                    }
-                  />
+                  <Row label="Source" value={sourceLabel(data.call_metadata?.source)} />
                   <Row
                     label="Consent captured"
                     value={data.recording.consent_captured ? "Yes" : "No"}
@@ -215,7 +215,7 @@ export default function CallDetailPage() {
                   />
                 </dl>
 
-                {data.call_metadata?.source === "device_recording_import" && (
+                {isDiallerRecording(data.call_metadata?.source) && (
                   <p className="mt-3 text-xs text-ink-muted">
                     {/* Without this, "consent captured: No" reads as a compliance
                         failure rather than a fact about how the file arrived. */}
@@ -231,11 +231,22 @@ export default function CallDetailPage() {
                 {dateTime(data.recording.purged_at)}. The transcript and analysis are kept.
               </p>
             ) : (
-              <p className="text-sm text-ink-muted">
-                {data.recording_skipped_reason
-                  ? policyReason(data.recording_skipped_reason)
-                  : "No recording was uploaded for this call."}
-              </p>
+              <>
+                <p className="text-sm text-ink-muted">
+                  {data.recording_skipped_reason
+                    ? policyReason(data.recording_skipped_reason)
+                    : "No recording was uploaded for this call."}
+                </p>
+                {isMetadataOnly(data.recording_skipped_reason) && (
+                  <p className="mt-2 text-xs text-ink-muted">
+                    {/* Otherwise an empty player reads as a failure rather than
+                        as a call that was only ever going to have metadata. */}
+                    This call was reported from the handset&apos;s call log, so its
+                    number, direction and duration are exact — there is simply no audio
+                    to transcribe.
+                  </p>
+                )}
+              </>
             )}
           </Card>
 
@@ -282,6 +293,24 @@ export default function CallDetailPage() {
       </div>
     </Shell>
   );
+}
+
+/** How the call reached the platform, in words a supervisor can act on. */
+function sourceLabel(source: unknown): string {
+  switch (source) {
+    case "call_log_with_recording":
+      return "Handset call log + dialler recording";
+    case "call_log_only":
+      return "Handset call log";
+    case "device_recording_import":
+      return "Imported from handset";
+    default:
+      return "Recorded in app";
+  }
+}
+
+function isDiallerRecording(source: unknown): boolean {
+  return source === "device_recording_import" || source === "call_log_with_recording";
 }
 
 function Row({ label, value }: { label: string; value: string }) {

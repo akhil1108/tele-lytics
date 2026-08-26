@@ -4,7 +4,12 @@ import { Platform, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import { Button, Card, Loading, Pill, Row, Screen, useTheme } from "@/components/ui";
 import { api } from "@/lib/api";
-import { recordingFolder, scanRecordingFolder } from "@/lib/importer";
+import {
+  hasPermission as hasCallLogPermission,
+  isSupported as callLogSupported,
+  syncCallLog,
+} from "@/lib/callLogService";
+import { recordingFolder } from "@/lib/importer";
 import { useSession } from "@/lib/session";
 import { STATUS_LABEL, duration, statusColor } from "@/lib/theme";
 import type { AgentStatus, DaySummary } from "@/lib/types";
@@ -20,8 +25,9 @@ export default function HomeScreen() {
   const [summary, setSummary] = useState<DaySummary | null>(null);
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [newRecordings, setNewRecordings] = useState<number | null>(null);
+  const [trackingReady, setTrackingReady] = useState(false);
   const [folderSet, setFolderSet] = useState(false);
+  const [justReported, setJustReported] = useState<number | null>(null);
 
   useEffect(() => uploadQueue.subscribe(setPending), []);
 
@@ -38,16 +44,21 @@ export default function HomeScreen() {
       /* offline: keep whatever was last shown rather than blanking the screen */
     }
 
-    // Surface a backlog without making the agent go looking for it — an
-    // un-imported recording is a call the dashboard never sees.
-    if (Platform.OS === "android") {
-      try {
-        const configured = await recordingFolder.get();
-        setFolderSet(Boolean(configured));
-        const scan = configured ? await scanRecordingFolder() : null;
-        setNewRecordings(scan?.detected.length ?? null);
-      } catch {
-        setNewRecordings(null);
+    // Sync on every pull-to-refresh. An unreported call is work the dashboard
+    // never sees, and leaving that to a button the agent has to remember is how
+    // a day's calls go missing.
+    if (Platform.OS === "android" && callLogSupported()) {
+      const granted = hasCallLogPermission();
+      setTrackingReady(granted);
+      setFolderSet(Boolean(await recordingFolder.get()));
+      if (granted) {
+        try {
+          const result = await syncCallLog(session.device_id);
+          setJustReported(result.reported);
+          if (result.reported > 0) setSummary(await api.summary());
+        } catch {
+          /* offline or permission revoked; the tracking screen explains it */
+        }
       }
     }
     setRefreshing(false);
@@ -92,26 +103,27 @@ export default function HomeScreen() {
           </View>
         </Card>
 
-        {Platform.OS === "android" && (
+        {Platform.OS === "android" && callLogSupported() && (
           <Card
             style={{ marginTop: 16 }}
-            title={
-              !folderSet
-                ? "Set up call recording import"
-                : newRecordings
-                  ? `${newRecordings} new recording${newRecordings === 1 ? "" : "s"} to import`
-                  : "Recordings up to date"
-            }
+            title={trackingReady ? "Call tracking on" : "Set up call tracking"}
             subtitle={
-              !folderSet
-                ? "Point the app at the folder your dialler saves calls to"
-                : undefined
+              !trackingReady
+                ? "Report every call you handle, recorded or not"
+                : folderSet
+                  ? "Calls and recordings are being reported"
+                  : "Calls are reported without audio — add a recordings folder for transcripts"
             }
           >
+            {trackingReady && justReported !== null && justReported > 0 && (
+              <Text style={{ color: theme.good, fontSize: 13, marginBottom: 10 }}>
+                {justReported} new call{justReported === 1 ? "" : "s"} reported
+              </Text>
+            )}
             <Button
-              label={!folderSet ? "Choose folder" : "Import recordings"}
-              variant={!folderSet || newRecordings ? "primary" : "secondary"}
-              onPress={() => router.push("/import")}
+              label={trackingReady ? "Call tracking" : "Set up"}
+              variant={trackingReady ? "secondary" : "primary"}
+              onPress={() => router.push("/tracking")}
             />
           </Card>
         )}

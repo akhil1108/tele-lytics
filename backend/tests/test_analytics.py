@@ -262,3 +262,77 @@ async def test_unknown_direction_calls_count_in_the_total_but_not_the_split(
     assert result.calls_outbound == 1
     # The split deliberately does not sum to the total.
     assert result.calls_inbound + result.calls_outbound < result.calls_total
+
+
+async def test_average_duration_excludes_missed_calls(
+    session: AsyncSession, org, agent
+) -> None:
+    """Missed calls carry zero duration.
+
+    Averaging them in would make "average call length" fall as missed-call
+    reporting from the phone's call log gets more complete — the opposite of
+    what improving the data should do.
+    """
+    now = datetime.now(UTC)
+    for status, seconds in [
+        ("completed", 200),
+        ("completed", 400),
+        ("missed", 0),
+        ("missed", 0),
+    ]:
+        session.add(
+            Call(
+                org_id=org.id, agent_id=agent.id, direction="inbound",
+                agent_number=agent.phone_number, customer_number="+919000000010",
+                started_at=now - timedelta(minutes=3), duration_seconds=seconds,
+                status=status,
+            )
+        )
+    await session.commit()
+
+    start, end = resolve_range(days=7)
+    result = await metrics.overview(session, org.id, start, end)
+
+    assert result.calls_total == 4
+    assert result.calls_missed == 2
+    # Mean of 200 and 400, not of 200, 400, 0 and 0.
+    assert result.avg_duration_seconds == 300.0
+    # Talk time is a sum, so it is unaffected.
+    assert result.total_talk_seconds == 600
+
+
+async def test_call_log_only_calls_are_counted_but_not_held_against_coverage(
+    session: AsyncSession, org, agent
+) -> None:
+    """A phone that cannot record still reports its calls.
+
+    Those calls must count towards volume and talk time, and must not appear as
+    a pipeline failure — nothing was ever going to record them.
+    """
+    now = datetime.now(UTC)
+    session.add(
+        Call(
+            org_id=org.id, agent_id=agent.id, direction="outbound",
+            agent_number=agent.phone_number, customer_number="+919000000011",
+            started_at=now - timedelta(minutes=5), duration_seconds=180,
+            recording_expected=False, has_recording=False,
+            recording_skipped_reason="device_cannot_record",
+        )
+    )
+    session.add(
+        Call(
+            org_id=org.id, agent_id=agent.id, direction="outbound",
+            agent_number=agent.phone_number, customer_number="+919000000012",
+            started_at=now - timedelta(minutes=4), duration_seconds=120,
+            recording_expected=True, has_recording=True,
+        )
+    )
+    await session.commit()
+
+    start, end = resolve_range(days=7)
+    result = await metrics.overview(session, org.id, start, end)
+
+    assert result.calls_total == 2
+    assert result.total_talk_seconds == 300
+    # One recording expected, one delivered.
+    assert result.recording_coverage == 1.0

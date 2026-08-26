@@ -3,6 +3,12 @@ import { Alert, Platform, ScrollView, Text, View } from "react-native";
 
 import { Button, Card, Note, Row, Screen, useTheme } from "@/components/ui";
 import { API_BASE_URL } from "@/lib/config";
+import {
+  hasPermission as hasCallLogPermission,
+  isSupported as callLogSupported,
+  resetSyncState,
+  syncedCount,
+} from "@/lib/callLogService";
 import { importedCount, recordingFolder, resetLedger } from "@/lib/importer";
 import { CallRecorder } from "@/lib/recorder";
 import { useSession } from "@/lib/session";
@@ -16,20 +22,24 @@ export default function SettingsScreen() {
   const [pendingCount, setPendingCount] = useState(0);
   const [folder, setFolder] = useState<string | null>(null);
   const [imported, setImported] = useState(0);
+  const [reported, setReported] = useState(0);
+  const [logGranted, setLogGranted] = useState(false);
 
   useEffect(() => {
     void CallRecorder.hasPermission().then(setMicGranted);
     void recordingFolder.get().then(setFolder);
     void importedCount().then(setImported);
+    void syncedCount().then(setReported);
+    setLogGranted(callLogSupported() && hasCallLogPermission());
     return uploadQueue.subscribe((queue) => setPendingCount(queue.length));
   }, []);
 
   function confirmForgetImports() {
     Alert.alert(
-      "Offer every recording again?",
-      "The app remembers which files it has already imported so a scan never " +
-        "uploads the same call twice. Clearing that will offer all of them again — " +
-        "useful if some were filed against the wrong number, but it can create " +
+      "Report every call again?",
+      "The app remembers which calls and recordings it has already sent, so a " +
+        "sync never reports the same call twice. Clearing that will offer them " +
+        "all again — useful if a batch was filed wrongly, but it can create " +
         "duplicates otherwise.",
       [
         { text: "Cancel", style: "cancel" },
@@ -37,7 +47,10 @@ export default function SettingsScreen() {
           text: "Clear",
           style: "destructive",
           onPress: () => {
-            void resetLedger().then(() => setImported(0));
+            void Promise.all([resetLedger(), resetSyncState()]).then(() => {
+              setImported(0);
+              setReported(0);
+            });
           },
         },
       ],
@@ -84,16 +97,21 @@ export default function SettingsScreen() {
         </Card>
 
         {Platform.OS === "android" && (
-          <Card style={{ marginTop: 16 }} title="Recording import">
+          <Card style={{ marginTop: 16 }} title="Call tracking">
             <Row
-              label="Folder"
-              value={folder ? (decodeURIComponent(folder).split(":").pop() ?? "Set") : "Not set"}
-              valueColor={folder ? undefined : theme.warning}
+              label="Call log access"
+              value={logGranted ? "Granted" : "Not granted"}
+              valueColor={logGranted ? undefined : theme.warning}
             />
-            <Row label="Files already imported" value={String(imported)} />
-            {imported > 0 && (
+            <Row label="Calls reported" value={String(reported)} />
+            <Row
+              label="Recordings folder"
+              value={folder ? (decodeURIComponent(folder).split(":").pop() ?? "Set") : "Not set"}
+            />
+            <Row label="Recordings uploaded" value={String(imported)} />
+            {(imported > 0 || reported > 0) && (
               <Button
-                label="Offer every recording again"
+                label="Report everything again"
                 onPress={confirmForgetImports}
                 style={{ marginTop: 12 }}
               />
@@ -107,10 +125,11 @@ export default function SettingsScreen() {
             needs a system-level permission Google and Apple do not grant to normal
             apps.
             {"\n\n"}
-            On Android the reliable route is to turn on call recording in your phone&apos;s
-            own dialler and let this app import from the folder it writes to. In-app
-            recording captures the microphone instead, so put the call on speaker if you
-            use it.
+            On Android this app reports every call from your call log — the number,
+            when it happened and how long it lasted — whether or not there was a
+            recording. If your phone&apos;s dialler saves recordings, pointing the app at
+            that folder adds transcripts and analysis on top. In-app recording captures
+            the microphone instead, so put the call on speaker if you use it.
           </Note>
         </Card>
 

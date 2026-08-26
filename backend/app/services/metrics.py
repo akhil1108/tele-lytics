@@ -78,7 +78,16 @@ async def overview(
                     func.sum(case((Call.direction == CallDirection.OUTBOUND, 1), else_=0)),
                     func.sum(case((Call.status == CallStatus.MISSED, 1), else_=0)),
                     func.sum(func.coalesce(Call.duration_seconds, 0)),
-                    func.avg(Call.duration_seconds),
+                    # Averaged over connected calls only. A missed call has zero
+                    # duration, and folding those in would make average call
+                    # length drop as missed-call reporting gets more complete —
+                    # exactly backwards.
+                    func.avg(
+                        case(
+                            (Call.status == CallStatus.MISSED, None),
+                            else_=Call.duration_seconds,
+                        )
+                    ),
                     func.sum(case((Call.has_recording.is_(True), 1), else_=0)),
                     func.sum(case((Call.recording_expected.is_(True), 1), else_=0)),
                 ),
@@ -365,7 +374,12 @@ async def agent_leaderboard(
                     Agent.team,
                     func.count(Call.id),
                     func.avg(Analysis.sentiment_score),
-                    func.avg(Call.duration_seconds),
+                    func.avg(
+                        case(
+                            (Call.status == CallStatus.MISSED, None),
+                            else_=Call.duration_seconds,
+                        )
+                    ),
                     func.sum(case((Analysis.customer_satisfied.is_(True), 1), else_=0)),
                     func.sum(case((Analysis.customer_satisfied.is_(False), 1), else_=0)),
                 )

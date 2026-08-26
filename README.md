@@ -10,12 +10,14 @@ Two applications over one API:
 | Application         | Who uses it   | What it does                                                        |
 | ------------------- | ------------- | ------------------------------------------------------------------- |
 | **Admin dashboard** | Supervisors   | Live floor status, call volume, transcripts, insight, recording policy |
-| **Agent app**       | Agents        | Imports the dialler's call recordings, uploads them, shows today's figures |
+| **Agent app**       | Agents        | Reports every call from the phone's log, uploads recordings where they exist |
 
 ## What happens to a call
 
 ```
-phone dialler records ──▶ app scans folder ──▶ policy check ──▶ upload
+phone call log ──▶ every call reported (number · duration · direction)
+                            │
+                            └── has a dialler recording? ──▶ policy check ──▶ upload
                                                                  │
                                         ┌────────────────────────┴─────┐
                                         ▼                            ▼
@@ -82,20 +84,22 @@ Without Docker, see [`backend/README.md`](backend/README.md),
 the agent's own settings.** An unrecorded call is a gap in a report; an
 unlawfully recorded one is a liability. `docs/ARCHITECTURE.md` §Recording policy.
 
-**The phone's own dialler does the recording; the app imports it.** No
-third-party app can capture a carrier call — the Android permission for it is
-reserved for system apps and iOS has no API at all. The OEM dialler *does* hold
-it, so it produces better audio than anything this app could record. The agent
-grants one folder through the system picker and the app reads new recordings
-from it, pulling the customer number and time out of each filename.
-[`docs/MOBILE_RECORDING.md`](docs/MOBILE_RECORDING.md) has the filename formats,
-the one folder Android puts out of reach, and how to wire up carrier-side
-recording instead.
+**A phone that cannot record still reports every call.** The Android app reads
+the call log for number, exact duration and direction, and reports all of it.
+Where the phone's dialler also saves recordings, those are matched to the log
+entries and add a transcript on top. Splitting it this way means a dashboard
+that only knows about recorded calls cannot silently under-report the floor's
+work.
 
-**A call whose direction is unknown says so.** Most recorders do not put it in
-the filename, so imported calls are stored as `unknown` rather than defaulted to
-inbound. They count in the call total and are excluded from the inbound/outbound
-split — which therefore does not sum to the total, on purpose.
+**The phone's own dialler does the recording; the app never taps the call.** No
+third-party app can — the Android permission is reserved for system apps and iOS
+has no API at all. [`docs/MOBILE_RECORDING.md`](docs/MOBILE_RECORDING.md) has
+the filename formats, the matching rules, the `READ_CALL_LOG` distribution
+caveat, and how to wire up carrier-side recording instead.
+
+**Average call length excludes missed calls.** They have zero duration, so
+folding them in would make the average fall as missed-call reporting gets more
+complete — exactly backwards.
 
 **Filler counts are computed in code; the model only judges them.** A model
 asked to count produces numbers that drift between runs, and a dashboard whose
@@ -129,9 +133,9 @@ docs/       Architecture, speech-model contract, mobile recording constraints
 
 ## Status
 
-Working end to end and tested — 82 backend tests covering tenant isolation, the
-full pipeline, retries, policy resolution and every dashboard aggregate, plus 24
-mobile tests over the recording-filename parser.
+Working end to end and tested — 84 backend tests covering tenant isolation, the
+full pipeline, retries, policy resolution and every dashboard aggregate, plus 49
+mobile tests over the recording-filename parser and the call-recording matcher.
 
 Not yet built, and deliberately so: carrier-side recording connectors,
 cross-call speaker identification, and live mid-call analysis (a different

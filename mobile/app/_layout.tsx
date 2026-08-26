@@ -25,7 +25,7 @@ export default function RootLayout() {
           <Stack.Screen name="pair" options={{ title: "Pair this handset", headerBackVisible: false }} />
           <Stack.Screen name="call" options={{ title: "Record a call" }} />
           <Stack.Screen name="uploads" options={{ title: "Uploads" }} />
-          <Stack.Screen name="import" options={{ title: "Import a recording" }} />
+          <Stack.Screen name="tracking" options={{ title: "Call tracking" }} />
           <Stack.Screen name="settings" options={{ title: "Settings" }} />
         </Stack>
       </SessionProvider>

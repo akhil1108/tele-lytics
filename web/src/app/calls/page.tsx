@@ -24,6 +24,8 @@ import {
   decimal,
   directionLabel,
   duration,
+  isMetadataOnly,
+  policyReason,
 } from "@/lib/format";
 import type { CallListItem, ProcessingStatus } from "@/lib/types";
 
@@ -55,8 +57,20 @@ const RECORDED = [
   { value: "false", label: "Without recording" },
 ];
 
-/** Processing state reads as words first; colour only reinforces it. */
-function ProcessingBadge({ status }: { status: ProcessingStatus }) {
+/**
+ * Processing state reads as words first; colour only reinforces it.
+ *
+ * A call reported from the phone's call log has no audio by design, so it says
+ * "Tracked only" rather than "No recording" — the latter reads as something
+ * that went wrong.
+ */
+function ProcessingBadge({
+  status,
+  skippedReason,
+}: {
+  status: ProcessingStatus;
+  skippedReason: string | null;
+}) {
   const color = {
     complete: "var(--status-good)",
     analysing: "var(--series-1)",
@@ -64,7 +78,17 @@ function ProcessingBadge({ status }: { status: ProcessingStatus }) {
     no_recording: "var(--text-muted)",
     failed: "var(--status-critical)",
   }[status];
-  return <Badge color={color}>{PROCESSING_LABELS[status]}</Badge>;
+
+  const label =
+    status === "no_recording" && isMetadataOnly(skippedReason)
+      ? "Tracked only"
+      : PROCESSING_LABELS[status];
+
+  return (
+    <Badge color={color} title={skippedReason ? policyReason(skippedReason) : undefined}>
+      {label}
+    </Badge>
+  );
 }
 
 export default function CallsPage() {
@@ -245,7 +269,10 @@ export default function CallsPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      <ProcessingBadge status={call.processing_status} />
+                      <ProcessingBadge
+                        status={call.processing_status}
+                        skippedReason={call.recording_skipped_reason}
+                      />
                     </td>
                     <td className="tabular px-4 py-2.5 text-right text-ink-secondary">
                       {call.open_tasks || "—"}
