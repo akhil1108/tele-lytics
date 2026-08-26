@@ -58,6 +58,16 @@ HEDGE_PHRASES: tuple[str, ...] = (
 )
 
 _WORD_RE = re.compile(r"[a-z']+")
+
+# Spelled-out numbers turn up constantly in support calls ("order four four
+# eight one two") and are never useful as keywords or topics.
+_NUMBER_WORDS: frozenset[str] = frozenset(
+    """
+zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen
+sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety
+hundred thousand million first second third fourth fifth dash point
+""".split()
+)
 _PHRASE_RES: dict[str, re.Pattern[str]] = {
     phrase: re.compile(r"\b" + re.escape(phrase) + r"\b")
     for phrase in (*FILLER_PHRASES, *HEDGE_PHRASES)
@@ -78,6 +88,18 @@ class SpeakerStopwordStats:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _is_content_word(word: str) -> bool:
+    """Whether a word is worth surfacing as a keyword or topic.
+
+    Contractions ("i'll", "we're") are function words the stop list misses
+    because of the apostrophe, and spelled-out numbers are noise — both crowd
+    out the terms a supervisor actually scans for.
+    """
+    if len(word) <= 2 or "'" in word:
+        return False
+    return word not in FILLER_WORDS and word not in _NUMBER_WORDS
 
 
 def _normalise(text: str) -> str:
@@ -116,7 +138,7 @@ def analyse_text(text: str) -> SpeakerStopwordStats:
             filler_counts[word] += 1
         if word in STOP_WORDS:
             stats.stopword_count += 1
-        elif word not in FILLER_WORDS and len(word) > 2:
+        elif _is_content_word(word):
             content_words[word] += 1
 
     stats.filler_count = sum(filler_counts.values())

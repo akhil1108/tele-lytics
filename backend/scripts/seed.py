@@ -17,6 +17,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy import select
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.logging import configure_logging, get_logger  # noqa: E402
@@ -26,6 +28,7 @@ from app.db.enums import (  # noqa: E402
     AgentStatus,
     CallDirection,
     CallStatus,
+    JobStatus,
     NumberKind,
     RecordingStatus,
     UserRole,
@@ -35,6 +38,7 @@ from app.db.models import (  # noqa: E402
     Call,
     Organization,
     PhoneNumberPolicy,
+    ProcessingJob,
     Recording,
     User,
 )
@@ -67,6 +71,29 @@ CUSTOMERS = [
 
 # A tiny valid-looking WAV header; the mock speech provider never decodes it.
 DEMO_AUDIO = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00" + b"\x00" * 2048
+
+
+async def _complete_jobs(session, call_id: str) -> None:
+    jobs = (
+        await session.execute(select(ProcessingJob).where(ProcessingJob.call_id == call_id))
+    ).scalars().all()
+    now = datetime.now(UTC)
+    for job in jobs:
+        job.status = JobStatus.SUCCEEDED
+        job.attempts = max(1, job.attempts)
+        job.started_at = job.started_at or now
+        job.finished_at = now
+    await session.commit()
+
+
+async def _sync_duration(session, call: Call) -> None:
+    recording = (
+        await session.execute(select(Recording).where(Recording.call_id == call.id))
+    ).scalar_one_or_none()
+    if recording and recording.duration_seconds:
+        call.duration_seconds = int(recording.duration_seconds)
+        call.ended_at = call.started_at + timedelta(seconds=call.duration_seconds)
+        await session.commit()
 
 
 async def reset() -> None:
@@ -210,6 +237,13 @@ async def seed(call_count: int, days: int) -> None:
             if call.has_recording:
                 await run_transcription(session, call.id)
                 await run_analysis(session, call.id)
+                # The pipeline queues each stage; running it inline here would
+                # otherwise leave every job sitting as "queued" and make the
+                # dashboard's processing panel report a backlog that is not real.
+                await _complete_jobs(session, call.id)
+                # The speech model measured the audio; keep the call agreeing
+                # with it so the sentiment timeline spans the right window.
+                await _sync_duration(session, call)
                 processed += 1
                 if processed % 10 == 0:
                     log.info("processed calls", extra={"count": processed})

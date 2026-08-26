@@ -46,6 +46,29 @@ _LABELS = (
 )
 
 
+# "Here's what I'll do — I'll ship a replacement" yields a first capture of
+# "do" plus a dangling dash. Neither is a task.
+_LEADING_JUNK = re.compile(r"^[\s\u2014\u2013,;:-]+")
+_EMPTY_VERBS = {"do", "that", "this", "it", "so", "the same", "the following"}
+_PROMISE_PREFIX = re.compile(r"^(i'?ll|i will|we'?ll|we will|let me)\s+", re.IGNORECASE)
+
+
+def _clean_commitment(phrase: str) -> str | None:
+    """Turn a captured clause into a task title, or reject it.
+
+    A dash splits an announcement from the promise it introduces — "what I'll
+    do — I'll ship a replacement" — so each clause is tried in turn and the
+    first real one wins. Taking the first clause unconditionally would throw
+    the actual commitment away.
+    """
+    for clause in re.split(r"\s[\u2014\u2013-]+\s", phrase):
+        cleaned = _LEADING_JUNK.sub("", clause).strip(" .,;:")
+        cleaned = _PROMISE_PREFIX.sub("", cleaned).strip()
+        if len(cleaned) >= 6 and cleaned.lower() not in _EMPTY_VERBS:
+            return cleaned[0].upper() + cleaned[1:]
+    return None
+
+
 def _label_for(score: float) -> str:
     for threshold, label in _LABELS:
         if score < threshold:
@@ -100,12 +123,16 @@ class MockAnalysisProvider:
         overall = round(max(-1.0, min(1.0, overall)), 2)
 
         tasks: list[ExtractedTask] = []
+        seen: set[str] = set()
         for seg in agent_segments:
             for match in _COMMITMENT.finditer(seg.get("text", "")):
-                phrase = match.group(2).strip()
+                phrase = _clean_commitment(match.group(2))
+                if phrase is None or phrase.lower() in seen:
+                    continue
+                seen.add(phrase.lower())
                 tasks.append(
                     ExtractedTask(
-                        title=phrase[:120].capitalize(),
+                        title=phrase[:120],
                         description=None,
                         owner_role="agent",
                         priority="high" if overall < -0.2 else "medium",
