@@ -120,7 +120,10 @@ export function Shell({ children }: { children: ReactNode }) {
               {item.label}
             </Link>
           ))}
-          <button onClick={signOut} className="ml-auto text-sm text-ink-muted">
+          <button
+            onClick={signOut}
+            className="ml-auto shrink-0 whitespace-nowrap text-sm text-ink-muted"
+          >
             Sign out
           </button>
         </header>

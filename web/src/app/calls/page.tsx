@@ -149,7 +149,7 @@ export default function CallsPage() {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="Number or customer name"
-            className="w-56"
+            className="w-64"
             aria-label="Search calls"
           />
           <Button type="submit">Search</Button>
