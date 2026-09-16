@@ -36,9 +36,11 @@ from app.db.enums import (  # noqa: E402
 from app.db.models import (  # noqa: E402
     Agent,
     Call,
+    CallCategory,
     Organization,
     PhoneNumberPolicy,
     ProcessingJob,
+    RatingParameter,
     Recording,
     User,
 )
@@ -71,6 +73,27 @@ CUSTOMERS = [
 
 # A tiny valid-looking WAV header; the mock speech provider never decodes it.
 DEMO_AUDIO = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00" + b"\x00" * 2048
+
+# Mirrors the backfill in alembic/versions/0002_ratings_categories_leads.py —
+# that migration only seeds orgs that already exist, so a freshly-seeded demo
+# org needs the same defaults created directly.
+DEFAULT_CATEGORIES = [
+    ("Sales Enquiry", "A prospective customer asking about pricing, plans or a purchase.", False),
+    ("Vendor Call", "A supplier, vendor or partner call, not a customer.", False),
+    ("Transactional", "Billing, invoices, order status, renewals — routine account business.",
+     False),
+    ("Support Request", "An existing customer needs help with a problem.", False),
+    ("Complaint", "A customer registering dissatisfaction or escalating an issue.", False),
+    ("Other", "Doesn't fit any other category — wrong numbers, spam, internal calls.", True),
+]
+DEFAULT_RATING_PARAMETERS = [
+    ("Politeness", "Courtesy and tone shown to the customer throughout the call.", 1, 5),
+    ("Resolution Effectiveness", "How directly the call addressed what the customer needed.",
+     1, 5),
+    ("Product Knowledge", "Accuracy and confidence of the agent's answers.", 1, 5),
+    ("Professionalism", "Overall conduct — pacing, clarity, and handling of the conversation.",
+     1, 5),
+]
 
 
 async def _complete_jobs(session, call_id: str) -> None:
@@ -117,6 +140,21 @@ async def seed(call_count: int, days: int) -> None:
         )
         session.add(org)
         await session.flush()
+
+        for idx, (name, description, is_default) in enumerate(DEFAULT_CATEGORIES):
+            session.add(
+                CallCategory(
+                    org_id=org.id, name=name, description=description,
+                    is_default=is_default, sort_order=idx,
+                )
+            )
+        for idx, (name, description, scale_min, scale_max) in enumerate(DEFAULT_RATING_PARAMETERS):
+            session.add(
+                RatingParameter(
+                    org_id=org.id, name=name, description=description,
+                    scale_min=scale_min, scale_max=scale_max, sort_order=idx,
+                )
+            )
 
         session.add(
             User(

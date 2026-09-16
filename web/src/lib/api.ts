@@ -4,14 +4,17 @@ import type {
   ActionItem,
   Agent,
   Call,
+  CallCategory,
   CallDetail,
   CallListItem,
   LeaderboardRow,
+  Lead,
   NumberCoverage,
   Overview,
   Page,
   PolicyDecision,
   Presence,
+  RatingParameter,
   RecordingPolicy,
   RiskSummary,
   SentimentBreakdown,
@@ -145,7 +148,18 @@ export interface CallFilters {
   status?: string;
   sentiment?: string;
   satisfied?: boolean;
+  category?: string;
   has_recording?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface LeadFilters {
+  days?: number;
+  category?: string;
+  status?: string;
+  call_id?: string;
   search?: string;
   limit?: number;
   offset?: number;
@@ -210,6 +224,50 @@ export const api = {
     request<Page<ActionItem>>(`/v1/tasks${query(params)}`),
   updateTask: (id: string, body: Record<string, unknown>) =>
     request<ActionItem>(`/v1/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  leads: (filters: LeadFilters = {}) =>
+    request<Page<Lead>>(`/v1/leads${query(filters as Record<string, unknown>)}`),
+  lead: (id: string) => request<Lead>(`/v1/leads/${id}`),
+  updateLead: (id: string, status: string) =>
+    request<Lead>(`/v1/leads/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+
+  ratingParameters: (includeInactive = false) =>
+    request<RatingParameter[]>(
+      `/v1/rating-parameters${query({ include_inactive: includeInactive })}`,
+    ),
+  createRatingParameter: (body: Record<string, unknown>) =>
+    request<RatingParameter>("/v1/rating-parameters", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateRatingParameter: (id: string, body: Record<string, unknown>) =>
+    request<RatingParameter>(`/v1/rating-parameters/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteRatingParameter: (id: string) =>
+    request<{ ok: boolean; message: string }>(`/v1/rating-parameters/${id}`, {
+      method: "DELETE",
+    }),
+
+  callCategories: (includeInactive = false) =>
+    request<CallCategory[]>(
+      `/v1/call-categories${query({ include_inactive: includeInactive })}`,
+    ),
+  createCallCategory: (body: Record<string, unknown>) =>
+    request<CallCategory>("/v1/call-categories", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateCallCategory: (id: string, body: Record<string, unknown>) =>
+    request<CallCategory>(`/v1/call-categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteCallCategory: (id: string) =>
+    request<{ ok: boolean; message: string }>(`/v1/call-categories/${id}`, {
+      method: "DELETE",
+    }),
 };
 
 /**

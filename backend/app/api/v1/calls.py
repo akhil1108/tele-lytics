@@ -69,6 +69,7 @@ async def list_calls(
     status: str | None = None,
     sentiment: str | None = None,
     satisfied: bool | None = None,
+    category: str | None = None,
     has_recording: bool | None = None,
     search: str | None = Query(default=None, description="Customer number or name"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -111,6 +112,8 @@ async def list_calls(
         stmt = stmt.where(Analysis.sentiment_overall == sentiment)
     if satisfied is not None:
         stmt = stmt.where(Analysis.customer_satisfied.is_(satisfied))
+    if category:
+        stmt = stmt.where(Analysis.category_name == category)
 
     total = (
         await session.execute(
@@ -168,6 +171,7 @@ async def list_calls(
             item.sentiment_score = analysis.sentiment_score
             item.customer_satisfied = analysis.customer_satisfied
             item.csat_score = analysis.csat_score
+            item.category_name = analysis.category_name
         item.processing_status = _processing_status(
             call.has_recording,
             item.has_transcript,

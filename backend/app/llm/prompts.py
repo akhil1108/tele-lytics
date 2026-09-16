@@ -48,6 +48,19 @@ advice that would apply to any call is not useful; leave the list empty rather \
 than filling it.
 - Quote the transcript's own language in evidence fields. Do not translate, \
 tidy or paraphrase a quote.
+- `category_name` must be the exact name of one entry from `<categories>` — the \
+one that best fits why this call happened. If truly none fit, use the entry \
+marked `"default": true`. Never invent a category name.
+- `custom_ratings` needs exactly one entry per parameter listed in \
+`<rating_parameters>`, scored within that parameter's own `scale_min`..`scale_max` \
+and grounded with a one-line rationale. Score every listed parameter even when \
+the call barely touches it — say so in the rationale rather than omitting it.
+- `lead` extracts contact and intent details ONLY when actually stated on the \
+call — a caller's phone number is not their identity, so do not fill `name` or \
+`email` from call metadata. A "lead" is a prospective customer showing real \
+purchase intent; an existing customer's support call, a vendor or supplier \
+call, and a wrong-number or spam call are all "other". Set `reason` to a short \
+line explaining the call/other verdict either way.
 
 Return only the structured object. Every field must be grounded in the \
 transcript you were given."""
@@ -59,14 +72,30 @@ def build_user_message(
     segments: list[dict[str, Any]],
     call_context: dict[str, Any],
     stopword_stats: dict[str, Any],
+    categories: list[dict[str, Any]] | None = None,
+    rating_parameters: list[dict[str, Any]] | None = None,
 ) -> str:
     """Assemble the per-call message.
 
     Segments are rendered as a compact numbered script rather than JSON: it
     reads more like a transcript, costs fewer tokens, and keeps the offsets the
     model needs for the timeline.
+
+    `categories` and `rating_parameters` are supervisor-edited, so — unlike the
+    system prompt — they are rebuilt fresh on every call rather than held
+    stable behind the cache breakpoint.
     """
     lines: list[str] = ["<call_context>", json.dumps(call_context, indent=2), "</call_context>", ""]
+
+    lines.append("<categories>")
+    lines.append(json.dumps(categories or [], indent=2))
+    lines.append("</categories>")
+    lines.append("")
+
+    lines.append("<rating_parameters>")
+    lines.append(json.dumps(rating_parameters or [], indent=2))
+    lines.append("</rating_parameters>")
+    lines.append("")
 
     lines.append("<transcript>")
     if segments:

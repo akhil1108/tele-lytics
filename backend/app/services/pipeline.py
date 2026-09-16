@@ -31,6 +31,9 @@ from app.db.models import (
     Agent,
     Analysis,
     Call,
+    CallCategory,
+    Lead,
+    RatingParameter,
     Recording,
     Transcript,
     TranscriptSegment,
@@ -196,6 +199,23 @@ async def run_analysis(session: AsyncSession, call_id: str) -> Analysis:
     stopword_stats = analyse_segments(segments)
     agent = await session.get(Agent, call.agent_id)
 
+    # Fetched fresh every run rather than cached: supervisors edit these from
+    # the Settings screen and the next call analysed should see the change.
+    categories = (
+        await session.execute(
+            select(CallCategory)
+            .where(CallCategory.org_id == call.org_id, CallCategory.is_active.is_(True))
+            .order_by(CallCategory.sort_order)
+        )
+    ).scalars().all()
+    rating_parameters = (
+        await session.execute(
+            select(RatingParameter)
+            .where(RatingParameter.org_id == call.org_id, RatingParameter.is_active.is_(True))
+            .order_by(RatingParameter.sort_order)
+        )
+    ).scalars().all()
+
     payload = AnalysisInput(
         call_id=call.id,
         transcript_text=transcript.full_text,
@@ -215,6 +235,17 @@ async def run_analysis(session: AsyncSession, call_id: str) -> Analysis:
             "started_at": call.started_at.isoformat() if call.started_at else None,
         },
         stopword_stats=stopword_stats,
+        categories=[
+            {"name": c.name, "description": c.description, "default": c.is_default}
+            for c in categories
+        ],
+        rating_parameters=[
+            {
+                "name": p.name, "description": p.description,
+                "scale_min": p.scale_min, "scale_max": p.scale_max,
+            }
+            for p in rating_parameters
+        ],
     )
 
     started = time.monotonic()
@@ -233,6 +264,8 @@ async def run_analysis(session: AsyncSession, call_id: str) -> Analysis:
         raw=result.raw,
         stopword_stats=stopword_stats,
         elapsed_ms=elapsed_ms,
+        categories=categories,
+        rating_parameters=rating_parameters,
     )
     await session.commit()
 
@@ -260,6 +293,8 @@ async def _persist_analysis(
     raw: dict,
     stopword_stats: dict,
     elapsed_ms: int,
+    categories: list[CallCategory],
+    rating_parameters: list[RatingParameter],
 ) -> Analysis:
     existing = (
         await session.execute(select(Analysis).where(Analysis.call_id == call.id))
@@ -307,13 +342,91 @@ async def _persist_analysis(
     analysis.token_usage = token_usage or {}
     analysis.processing_ms = elapsed_ms
     analysis.raw = raw or {}
+
+    category = _resolve_category(result_analysis.category_name, categories)
+    analysis.category_id = category.id if category else None
+    analysis.category_name = category.name if category else result_analysis.category_name or None
+    analysis.category_confidence = result_analysis.category_confidence
+    analysis.custom_ratings = _match_ratings(result_analysis.custom_ratings, rating_parameters)
     await session.flush()
 
     _apply_segment_sentiment(segments, result_analysis)
     _create_action_items(session, call=call, analysis=analysis, result_analysis=result_analysis)
+    await _upsert_lead(session, call=call, result_analysis=result_analysis)
 
     await session.flush()
     return analysis
+
+
+def _resolve_category(
+    name: str, categories: list[CallCategory]
+) -> CallCategory | None:
+    """Case-insensitive exact match; falls back to the org's default category.
+
+    A model reply that doesn't match anything configured (a renamed/deleted
+    category, or a hallucinated name) degrades to the default rather than
+    leaving the call unclassified.
+    """
+    lowered = (name or "").strip().lower()
+    for category in categories:
+        if category.name.strip().lower() == lowered:
+            return category
+    return next((c for c in categories if c.is_default), None) or (
+        categories[0] if categories else None
+    )
+
+
+def _match_ratings(
+    scores: list, rating_parameters: list[RatingParameter]
+) -> list[dict]:
+    """Match returned parameter names against the org's list; drop the rest."""
+    by_name = {p.name.strip().lower(): p for p in rating_parameters}
+    matched: list[dict] = []
+    for entry in scores:
+        param = by_name.get(entry.parameter_name.strip().lower())
+        if param is None:
+            continue
+        matched.append(
+            {
+                "parameter_id": param.id,
+                "parameter_name": param.name,
+                "score": entry.score,
+                "scale_min": param.scale_min,
+                "scale_max": param.scale_max,
+                "rationale": entry.rationale,
+            }
+        )
+    return matched
+
+
+async def _upsert_lead(
+    session: AsyncSession, *, call: Call, result_analysis: CallAnalysis
+) -> None:
+    """Record this call's lead verdict — every call, not only confirmed leads.
+
+    Rerun-safe like `_create_action_items`: a re-analysed call replaces its one
+    lead row rather than accumulating duplicates.
+    """
+    lead_data = result_analysis.lead
+    existing = (
+        await session.execute(select(Lead).where(Lead.call_id == call.id))
+    ).scalar_one_or_none()
+
+    if existing is None:
+        existing = Lead(org_id=call.org_id, call_id=call.id)
+        session.add(existing)
+
+    existing.agent_id = call.agent_id
+    existing.customer_number = call.customer_number
+    existing.customer_name = call.customer_name
+    existing.lead_name = lead_data.name
+    existing.lead_email = lead_data.email
+    existing.purpose = lead_data.purpose
+    existing.intent = lead_data.intent
+    existing.category = lead_data.category
+    existing.confidence = lead_data.confidence
+    existing.reason = lead_data.reason
+    existing.source_quote = lead_data.source_quote
 
 
 def _apply_segment_sentiment(

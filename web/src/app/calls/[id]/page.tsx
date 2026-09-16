@@ -8,6 +8,7 @@ import { useState } from "react";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { SentimentTimeline } from "@/components/charts/SentimentTimeline";
 import {
+  CustomRatingsPanel,
   LanguagePanel,
   RiskPanel,
   TasksPanel,
@@ -26,7 +27,7 @@ import {
   policyReason,
   titleCase,
 } from "@/lib/format";
-import type { ActionItem } from "@/lib/types";
+import type { ActionItem, Lead } from "@/lib/types";
 
 export default function CallDetailPage() {
   const params = useParams<{ id: string }>();
@@ -55,6 +56,16 @@ export default function CallDetailPage() {
     mutationFn: (item: ActionItem) =>
       api.updateTask(item.id, { status: item.status === "done" ? "open" : "done" }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["call", callId] }),
+  });
+
+  const lead = useQuery({
+    queryKey: ["lead-for-call", callId],
+    queryFn: () => api.leads({ call_id: callId, limit: 1 }),
+    enabled: Boolean(call.data?.analysis),
+  });
+  const leadUpdate = useMutation({
+    mutationFn: (status: string) => api.updateLead(lead.data!.items[0].id, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lead-for-call", callId] }),
   });
 
   if (call.isLoading) {
@@ -185,6 +196,7 @@ export default function CallDetailPage() {
               onToggle={(item) => toggleTask.mutate(item)}
             />
           )}
+          {data.analysis && <CustomRatingsPanel analysis={data.analysis} />}
           {data.analysis && <LanguagePanel analysis={data.analysis} />}
           {data.analysis && <RiskPanel analysis={data.analysis} />}
         </div>
@@ -250,6 +262,14 @@ export default function CallDetailPage() {
             )}
           </Card>
 
+          {lead.data?.items[0] && (
+            <LeadCard
+              lead={lead.data.items[0]}
+              onStatusChange={(status) => leadUpdate.mutate(status)}
+              updating={leadUpdate.isPending}
+            />
+          )}
+
           {data.analysis && (
             <Card title="Sentiment through the call">
               <SentimentTimeline
@@ -311,6 +331,53 @@ function sourceLabel(source: unknown): string {
 
 function isDiallerRecording(source: unknown): boolean {
   return source === "device_recording_import" || source === "call_log_with_recording";
+}
+
+function LeadCard({
+  lead,
+  onStatusChange,
+  updating,
+}: {
+  lead: Lead;
+  onStatusChange: (status: string) => void;
+  updating: boolean;
+}) {
+  return (
+    <Card
+      title="Lead"
+      subtitle={lead.category === "lead" ? "Judged a genuine lead" : "Not judged a lead"}
+      actions={
+        <Badge color={lead.category === "lead" ? "var(--series-1)" : "var(--text-muted)"}>
+          {titleCase(lead.category)}
+        </Badge>
+      }
+    >
+      {lead.category === "lead" ? (
+        <dl className="space-y-1.5 text-xs">
+          <Row label="Name" value={lead.lead_name ?? "—"} />
+          <Row label="Email" value={lead.lead_email ?? "—"} />
+          <Row label="Purpose" value={lead.purpose ?? "—"} />
+          <Row label="Intent" value={lead.intent ?? "—"} />
+        </dl>
+      ) : (
+        <p className="text-sm text-ink-muted">{lead.reason ?? "No lead signal on this call."}</p>
+      )}
+
+      <label className="mt-3 flex items-center justify-between gap-2 text-xs">
+        <span className="text-ink-muted">Status</span>
+        <select
+          value={lead.status}
+          disabled={updating}
+          onChange={(event) => onStatusChange(event.target.value)}
+          className="rounded-md border border-hairline bg-surface px-2 py-1 text-xs text-ink"
+        >
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="dismissed">Dismissed</option>
+        </select>
+      </label>
+    </Card>
+  );
 }
 
 function Row({ label, value }: { label: string; value: string }) {

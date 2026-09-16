@@ -17,6 +17,10 @@ class AnalysisInput:
     segments: list[dict[str, Any]] = field(default_factory=list)
     call_context: dict[str, Any] = field(default_factory=dict)
     stopword_stats: dict[str, Any] = field(default_factory=dict)
+    # Org-defined taxonomy/criteria, fetched fresh per call since supervisors
+    # edit them — see app.services.pipeline.run_analysis.
+    categories: list[dict[str, Any]] = field(default_factory=list)
+    rating_parameters: list[dict[str, Any]] = field(default_factory=list)
 
 
 @runtime_checkable

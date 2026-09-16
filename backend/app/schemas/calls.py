@@ -65,6 +65,7 @@ class CallListItem(CallOut):
     sentiment_score: float | None = None
     customer_satisfied: bool | None = None
     csat_score: int | None = None
+    category_name: str | None = None
     has_transcript: bool = False
     has_analysis: bool = False
     processing_status: str = "pending"
@@ -145,6 +146,9 @@ class AnalysisOut(ORMModel):
     agent_talk_ratio: float | None = None
     interruption_count: int | None = None
     resolution_status: str | None = None
+    category_name: str | None = None
+    category_confidence: float | None = None
+    custom_ratings: list = Field(default_factory=list)
     topics: list = Field(default_factory=list)
     keywords: list = Field(default_factory=list)
     stopword_stats: dict = Field(default_factory=dict)

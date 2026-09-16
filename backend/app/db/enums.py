@@ -104,3 +104,14 @@ class NumberKind(StrEnum):
 class DevicePlatform(StrEnum):
     ANDROID = "android"
     IOS = "ios"
+
+
+class LeadCategory(StrEnum):
+    LEAD = "lead"
+    OTHER = "other"
+
+
+class LeadStatus(StrEnum):
+    NEW = "new"
+    CONTACTED = "contacted"
+    DISMISSED = "dismissed"

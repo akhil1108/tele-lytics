@@ -10,6 +10,8 @@ export type Sentiment =
   | "very_positive";
 export type Priority = "low" | "medium" | "high" | "urgent";
 export type TaskStatus = "open" | "in_progress" | "done" | "dismissed";
+export type LeadCategory = "lead" | "other";
+export type LeadStatus = "new" | "contacted" | "dismissed";
 export type ProcessingStatus =
   | "complete"
   | "analysing"
@@ -126,6 +128,7 @@ export interface CallListItem extends Call {
   sentiment_score: number | null;
   customer_satisfied: boolean | null;
   csat_score: number | null;
+  category_name: string | null;
   has_transcript: boolean;
   has_analysis: boolean;
   processing_status: ProcessingStatus;
@@ -188,6 +191,15 @@ export interface SentimentPoint {
   note: string | null;
 }
 
+export interface CustomRatingScore {
+  parameter_id: string;
+  parameter_name: string;
+  score: number;
+  scale_min: number;
+  scale_max: number;
+  rationale: string | null;
+}
+
 export interface Analysis {
   id: string;
   call_id: string;
@@ -203,6 +215,9 @@ export interface Analysis {
   agent_talk_ratio: number | null;
   interruption_count: number | null;
   resolution_status: string | null;
+  category_name: string | null;
+  category_confidence: number | null;
+  custom_ratings: CustomRatingScore[];
   topics: string[];
   keywords: string[];
   stopword_stats: Record<string, SpeakerStopwordStats>;
@@ -365,4 +380,51 @@ export interface Page<T> {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface RatingParameter {
+  id: string;
+  org_id: string;
+  name: string;
+  description: string | null;
+  scale_min: number;
+  scale_max: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CallCategory {
+  id: string;
+  org_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Lead {
+  id: string;
+  org_id: string;
+  call_id: string;
+  agent_id: string | null;
+  customer_number: string;
+  customer_name: string | null;
+  lead_name: string | null;
+  lead_email: string | null;
+  purpose: string | null;
+  intent: string | null;
+  category: LeadCategory;
+  confidence: number;
+  reason: string | null;
+  source_quote: string | null;
+  status: LeadStatus;
+  created_at: string;
+  updated_at: string;
+  agent_name?: string | null;
+  call_started_at?: string | null;
 }

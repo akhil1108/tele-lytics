@@ -27,7 +27,7 @@ import {
   isMetadataOnly,
   policyReason,
 } from "@/lib/format";
-import type { CallListItem, ProcessingStatus } from "@/lib/types";
+import type { CallCategory, CallListItem, ProcessingStatus } from "@/lib/types";
 
 const PAGE_SIZE = 25;
 
@@ -96,6 +96,7 @@ export default function CallsPage() {
   const [direction, setDirection] = useState("");
   const [sentiment, setSentiment] = useState("");
   const [recorded, setRecorded] = useState("");
+  const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [offset, setOffset] = useState(0);
@@ -105,6 +106,7 @@ export default function CallsPage() {
     direction: direction || undefined,
     sentiment: sentiment || undefined,
     has_recording: recorded === "" ? undefined : recorded === "true",
+    category: category || undefined,
     search: search || undefined,
     limit: PAGE_SIZE,
     offset,
@@ -115,6 +117,15 @@ export default function CallsPage() {
     queryFn: () => api.calls(filters),
     placeholderData: keepPreviousData,
   });
+
+  const categories = useQuery({
+    queryKey: ["call-categories"],
+    queryFn: () => api.callCategories(),
+  });
+  const CATEGORY_OPTIONS = [
+    { value: "", label: "Any category" },
+    ...(categories.data ?? []).map((c: CallCategory) => ({ value: c.name, label: c.name })),
+  ];
 
   function resetTo(setter: (value: string) => void) {
     return (value: string) => {
@@ -172,6 +183,7 @@ export default function CallsPage() {
           <Select value={range} onChange={resetTo(setRange)} options={RANGES} />
           <Select value={direction} onChange={resetTo(setDirection)} options={DIRECTIONS} />
           <Select value={sentiment} onChange={resetTo(setSentiment)} options={SENTIMENTS} />
+          <Select value={category} onChange={resetTo(setCategory)} options={CATEGORY_OPTIONS} />
           <Select value={recorded} onChange={resetTo(setRecorded)} options={RECORDED} />
         </div>
       </div>
@@ -189,7 +201,7 @@ export default function CallsPage() {
       {page && page.items.length > 0 && (
         <>
           <div className="overflow-x-auto rounded-card border border-hairline bg-surface">
-            <table className="w-full min-w-[880px] text-left text-sm">
+            <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="border-b border-hairline text-xs text-ink-muted">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">When</th>
@@ -198,6 +210,7 @@ export default function CallsPage() {
                   <th className="px-4 py-2.5 text-right font-medium">Duration</th>
                   <th className="px-4 py-2.5 font-medium">Sentiment</th>
                   <th className="px-4 py-2.5 font-medium">Satisfied</th>
+                  <th className="px-4 py-2.5 font-medium">Category</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 text-right font-medium">Tasks</th>
                 </tr>
@@ -267,6 +280,9 @@ export default function CallsPage() {
                           {call.csat_score}/5
                         </span>
                       )}
+                    </td>
+                    <td className="px-4 py-2.5 text-ink-secondary">
+                      {call.category_name ?? "—"}
                     </td>
                     <td className="px-4 py-2.5">
                       <ProcessingBadge
