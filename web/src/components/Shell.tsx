@@ -42,7 +42,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-hairline bg-surface px-3 py-5 md:flex">
         <div className="px-2">
-          <p className="text-sm font-semibold text-ink">Call Analytics</p>
+          <p className="text-sm font-semibold text-ink">Tele-lytics</p>
           <p className="mt-0.5 truncate text-xs text-ink-muted">{organization}</p>
         </div>
 

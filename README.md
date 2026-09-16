@@ -1,4 +1,4 @@
-# Call Analytics
+# Tele-lytics
 
 Call recording insight for contact centres. Agents carry a mobile app that
 records their calls; supervisors get a dashboard showing who is on a call right
@@ -37,7 +37,7 @@ run and how the demo seeds.
 ## Running it
 
 ```bash
-git clone <this repo> && cd call-analytics
+git clone <this repo> && cd tele-lytics
 cp .env.example .env
 docker compose up --build
 

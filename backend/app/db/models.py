@@ -1,4 +1,4 @@
-"""SQLAlchemy models for the call analytics platform.
+"""SQLAlchemy models for the Tele-lytics platform.
 
 Every tenant-scoped table carries `org_id` directly (rather than relying on a
 join to reach it) so that every query can filter on the tenant boundary with a

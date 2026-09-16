@@ -4,7 +4,7 @@ import "@/styles/globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Call Analytics",
+  title: "Tele-lytics",
   description:
     "Call recording insight for contact centres: transcripts, tone, sentiment, tasks and satisfaction.",
 };

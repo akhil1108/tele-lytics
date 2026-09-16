@@ -1,6 +1,6 @@
 # Admin dashboard
 
-Next.js 14 (App Router) supervisor dashboard for the call analytics platform.
+Next.js 14 (App Router) supervisor dashboard for the Tele-lytics platform.
 
 ## Running
 

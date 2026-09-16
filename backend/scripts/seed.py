@@ -303,7 +303,7 @@ async def seed(call_count: int, days: int) -> None:
 
 
 async def amain() -> None:
-    parser = argparse.ArgumentParser(description="Seed the call analytics database")
+    parser = argparse.ArgumentParser(description="Seed the Tele-lytics database")
     parser.add_argument("--reset", action="store_true", help="drop all tables first")
     parser.add_argument("--calls", type=int, default=60, help="how many calls to create")
     parser.add_argument("--days", type=int, default=14, help="spread calls over this many days")
