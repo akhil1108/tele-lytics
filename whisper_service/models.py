@@ -248,3 +248,64 @@ def warm_up() -> None:
     if settings.hf_token:
         _diarization_pipeline()
     _emotion_model()
+    _translation_model()
+
+
+# ------------------------------------------------------- Indic -> English
+
+
+@lru_cache(maxsize=1)
+def _translation_model():
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
+    from IndicTransToolkit.processor import IndicProcessor
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        settings.indic_translation_model, trust_remote_code=True, token=settings.hf_token
+    )
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        settings.indic_translation_model, trust_remote_code=True, token=settings.hf_token
+    ).to(DEVICE).eval()
+    processor = IndicProcessor(inference=True)
+    return tokenizer, model, processor
+
+
+# Whisper's language hint uses ISO 639-1-ish codes; IndicTrans2 wants
+# FLORES-200 script-tagged codes. Only the languages Whisper actually
+# recognises AND IndicTrans2's indic-en model was trained on are listed —
+# a handful of IndicTrans2's low-resource languages (Bodo, Dogri, Konkani,
+# Santali, ...) have no Whisper-recognised code to map from at all.
+_WHISPER_TO_FLORES: dict[str, str] = {
+    "as": "asm_Beng", "bn": "ben_Beng", "gu": "guj_Gujr", "hi": "hin_Deva",
+    "kn": "kan_Knda", "ml": "mal_Mlym", "mr": "mar_Deva", "ne": "npi_Deva",
+    "or": "ory_Orya", "pa": "pan_Guru", "sa": "san_Deva", "sd": "snd_Deva",
+    "ta": "tam_Taml", "te": "tel_Telu", "ur": "urd_Arab",
+}
+
+
+def flores_code_for(whisper_language: str | None) -> str | None:
+    """None means "don't translate" — English, or a language IndicTrans2's
+    indic-en model doesn't cover."""
+    if not whisper_language:
+        return None
+    return _WHISPER_TO_FLORES.get(whisper_language.split("-")[0].lower())
+
+
+def translate_to_english(texts: list[str], src_lang: str) -> list[str]:
+    """Batch-translates already-transcribed native-language text to English.
+
+    Whole-call, not per-segment: the source language comes from the same
+    hint Whisper transcribed with, so a call genuinely code-switching
+    between, say, Kannada and English mid-call will have its English
+    portions run back through translation too — usually a near no-op, but
+    worth knowing rather than assuming this handles code-switching cleanly.
+    """
+    if not texts:
+        return texts
+    tokenizer, model, processor = _translation_model()
+    batch = processor.preprocess_batch(texts, src_lang=src_lang, tgt_lang="eng_Latn")
+    inputs = tokenizer(batch, padding="longest", truncation=True, max_length=256, return_tensors="pt")
+    with torch.no_grad():
+        generated = model.generate(**inputs.to(DEVICE), num_beams=5, max_length=256)
+    decoded = tokenizer.batch_decode(generated, skip_special_tokens=True)
+    return processor.postprocess_batch(decoded, lang="eng_Latn")

@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     whisper_model: str = "openai/whisper-large-v3-turbo"
     diarization_model: str = "pyannote/speaker-diarization-3.1"
     emotion_model: str = "superb/wav2vec2-base-superb-er"
+    # Distilled 200M variant — "suitable for production use" per AI4Bharat's
+    # own docs; the 1B checkpoint (ai4bharat/indictrans2-indic-en-1B) trades
+    # latency for a further accuracy bump if quality matters more here.
+    indic_translation_model: str = "ai4bharat/indictrans2-indic-en-dist-200M"
 
     # pyannote's diarization model is gated on the Hub — you must accept its
     # terms at huggingface.co/pyannote/speaker-diarization-3.1 and pass a

@@ -86,6 +86,19 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
         vocabulary=meta.get("vocabulary") or [],
     )
 
+    # Translate to English when the call was transcribed in a supported
+    # Indian language — a no-op for English/unsupported languages, since
+    # flores_code_for returns None and nothing below runs.
+    original_texts: dict[int, str] | None = None
+    src_lang = models.flores_code_for(meta.get("language"))
+    if src_lang and chunks:
+        native_texts = [c.text for c in chunks] + [full_text]
+        translated = models.translate_to_english(native_texts, src_lang)
+        original_texts = {i: chunks[i].text for i in range(len(chunks))}
+        for chunk, english_text in zip(chunks, translated[:-1]):
+            chunk.text = english_text
+        full_text = translated[-1]
+
     turns: list[models.Turn] = []
     roles: dict[str, str] = {}
     if meta.get("diarize", True):
@@ -94,7 +107,7 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
 
     segments = []
     tone_labels: list[str] = []
-    for chunk in chunks:
+    for idx, chunk in enumerate(chunks):
         speaker = models.speaker_for(turns, roles, chunk.start_s, chunk.end_s) if turns else "unknown"
         segment_wave = models.slice_waveform(waveform, sample_rate, chunk.start_s, chunk.end_s)
         tone = models.score_tone(segment_wave, sample_rate)
@@ -106,6 +119,10 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
                 "start_ms": int(chunk.start_s * 1000),
                 "end_ms": int(chunk.end_s * 1000),
                 "text": chunk.text,
+                # Kept for transparency/audit when this segment was
+                # translated — the adapter preserves unrecognised fields
+                # like this one in `transcripts.raw` rather than dropping it.
+                "original_text": original_texts[idx] if original_texts else None,
                 "tone": {
                     "label": tone.label,
                     "confidence": tone.confidence,
@@ -121,6 +138,7 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
         "provider": "whisper-service",
         "model": settings.whisper_model,
         "language": meta.get("language"),
+        "translated_from": src_lang,
         "text": full_text,
         "duration_seconds": duration_seconds,
         "tone_overall": tone_overall,

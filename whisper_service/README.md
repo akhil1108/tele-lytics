@@ -4,23 +4,24 @@ Speech-to-text for the dashboard's pipeline, implementing
 [`docs/STT_CONTRACT.md`](../docs/STT_CONTRACT.md) so it plugs into
 `STT_PROVIDER=shared_model` with zero changes to `backend/`.
 
-Three models, one HTTP endpoint:
+Four models, one HTTP endpoint:
 
 | Job | Model | Why |
 | --- | --- | --- |
 | Transcription | [`openai/whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | 99-language coverage (matters for `en-IN` code-switching), ~8x faster decode than large-v3 for a small accuracy tradeoff |
 | Speaker diarisation | [`pyannote/speaker-diarization-3.1`](https://huggingface.co/pyannote/speaker-diarization-3.1) | Whisper alone has no speaker concept; call recordings are mono, so this is what tells agent from customer |
 | Tone | [`superb/wav2vec2-base-superb-er`](https://huggingface.co/superb/wav2vec2-base-superb-er) | Discrete label + confidence maps directly onto `tone.label` — the field the transcript view actually renders. (An earlier pick, `ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition`, silently fails to load its classifier head via `AutoModelForAudioClassification` — the checkpoint's weight names don't match the standard head, so it scores on randomly-initialised weights. Watch the startup log for "weights ... newly initialized" if you swap emotion models — that warning means the same failure.) |
+| Indic → English translation | [`ai4bharat/indictrans2-indic-en-dist-200M`](https://huggingface.co/ai4bharat/indictrans2-indic-en-dist-200M) | Runs whenever `metadata.language` is a supported Indian language other than English (Hindi, Kannada, Tamil, Telugu, Malayalam, Marathi, Gujarati, Bengali, Punjabi, Odia, Assamese, Nepali, Sanskrit, Sindhi, Urdu) — Whisper transcribes in the native language, then this translates it to English before the response goes back. Whole-call, not per-segment: a call that code-switches between, say, Kannada and English mid-call has its English portions run back through translation too, which is usually a near no-op but isn't true per-segment language detection. |
 
 ## Setup
 
-1. **Accept the pyannote model's terms — both of them.** The diarisation
-   pipeline is gated, and it also pulls in a second gated model under the
-   hood for segmentation. You need to accept terms on **both** pages while
-   logged in, or startup fails with a `GatedRepoError` on the second one even
-   after you've accepted the first:
+1. **Accept every gated model's terms.** Three of the four models are gated
+   — diarisation pulls in a second gated model under the hood for
+   segmentation, so it's four pages total. Log in and accept terms on each,
+   or startup (or the first translated call) fails with a `GatedRepoError`:
    - <https://huggingface.co/pyannote/speaker-diarization-3.1>
    - <https://huggingface.co/pyannote/segmentation-3.0>
+   - <https://huggingface.co/ai4bharat/indictrans2-indic-en-dist-200M>
 2. **Get an HF token** with read access at
    <https://huggingface.co/settings/tokens>.
 3. **Install `ffmpeg`** if running outside Docker (`brew install ffmpeg` /
@@ -96,3 +97,15 @@ For real call-centre volume, use:
 - **Tone's valence/arousal are a fixed lookup from the discrete label**, not
   measured — see `_EMOTION_VALENCE_AROUSAL` in `models.py`. `tone.label` is
   the real signal here.
+- **Translation adds real latency.** It runs beam search (`num_beams=5`)
+  per call, on top of ASR + diarisation + tone already running for every
+  segment. On a longer recording with many segments, on a single Apple
+  Silicon Mac (MPS), a translated call can take several minutes end to end —
+  worth knowing before assuming this scales to real call volume without a
+  proper GPU host or a lower beam count.
+- **Translation is whole-call, not per-segment.** The source language comes
+  from `metadata.language` — the same hint Whisper transcribes with — so a
+  call that code-switches between an Indian language and English mid-call
+  has every segment translated using one fixed source language, English
+  portions included. True per-segment code-switch detection would need a
+  language-ID pass per segment, which this doesn't do.
