@@ -32,7 +32,10 @@ phone call log ──▶ every call reported (number · duration · direction)
 Both stages sit behind a provider interface, so the models are swapped by
 environment variable. Ship with `STT_PROVIDER=mock` and `ANALYSIS_PROVIDER=mock`
 and the entire system runs with no credentials at all — which is how the tests
-run and how the demo seeds.
+run and how the demo seeds. [`whisper_service/`](whisper_service/) is a real
+speech-model provider you can point `STT_ENDPOINT_URL` at instead: Whisper
+large-v3-turbo for transcription, pyannote for agent/customer diarisation, and
+a tone classifier, all behind the same `docs/STT_CONTRACT.md` wire contract.
 
 ## Running it
 
@@ -60,6 +63,16 @@ type it into the app.
 Without Docker, see [`backend/README.md`](backend/README.md),
 [`web/README.md`](web/README.md) and [`mobile/README.md`](mobile/README.md).
 
+The real Whisper-backed speech provider is heavy (multi-GB of model weights)
+and off by default; bring it up separately with:
+
+```bash
+docker compose --profile whisper up --build
+```
+
+See [`whisper_service/README.md`](whisper_service/README.md) for the gated
+Hugging Face models it needs access to first.
+
 ## What the dashboard shows
 
 - **Live floor** — agents on call right now, over a WebSocket, not a poll.
@@ -75,6 +88,17 @@ Without Docker, see [`backend/README.md`](backend/README.md),
   it compares across calls of any length.
 - **Tasks and actions** — what someone committed to on the call, separate from
   what the model recommends doing next. Both quote the line they came from.
+- **Custom rating parameters** — supervisor-defined criteria (Politeness,
+  Product Knowledge, ...), scored 1–5 with a rationale on every call. Managed
+  from **Settings**.
+- **Call categories** — each call classified into the org's own taxonomy
+  (Sales Enquiry, Vendor Call, Transactional, ...), also managed from
+  **Settings**; an unmatched model answer falls back to the org's default
+  category rather than going unclassified.
+- **Leads** — name, email, purpose and intent extracted when a call is a
+  genuine prospect enquiry. Every analysed call gets a lead-or-other verdict,
+  not only confirmed leads, so **Leads** doubles as an audit trail of what got
+  filtered out. Each one carries a follow-up status that survives re-analysis.
 - **Recording policy** — per number, with a checker that runs the same resolver
   the handset does.
 
@@ -116,10 +140,11 @@ dashboard can explain the empty player rather than 404.
 ## Repository
 
 ```
-backend/    FastAPI API + pipeline worker (Python 3.11)
-web/        Admin dashboard (Next.js 14)
-mobile/     Agent app (Expo / React Native)
-docs/       Architecture, speech-model contract, mobile recording constraints
+backend/          FastAPI API + pipeline worker (Python 3.11)
+web/              Admin dashboard (Next.js 14)
+mobile/           Agent app (Expo / React Native)
+whisper_service/  Optional real speech provider — Whisper, diarisation, tone
+docs/             Architecture, speech-model contract, mobile recording constraints
 ```
 
 ## Documentation
@@ -133,9 +158,10 @@ docs/       Architecture, speech-model contract, mobile recording constraints
 
 ## Status
 
-Working end to end and tested — 84 backend tests covering tenant isolation, the
-full pipeline, retries, policy resolution and every dashboard aggregate, plus 49
-mobile tests over the recording-filename parser and the call-recording matcher.
+Working end to end and tested — 90 backend tests covering tenant isolation, the
+full pipeline, retries, policy resolution, category/lead resolution and every
+dashboard aggregate, plus 49 mobile tests over the recording-filename parser
+and the call-recording matcher.
 
 Not yet built, and deliberately so: carrier-side recording connectors,
 cross-call speaker identification, and live mid-call analysis (a different
