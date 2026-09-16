@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # ---- Core ----
     app_env: Literal["development", "test", "staging", "production"] = "development"
-    app_name: str = "Call Analytics"
+    app_name: str = "Tele-lytics"
     log_level: str = "INFO"
     api_base_url: str = "http://localhost:8000"
 

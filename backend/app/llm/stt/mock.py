@@ -38,6 +38,18 @@ _SCRIPTS: list[list[tuple[str, str, str]]] = [
         ("agent", "I'll email the comparison this afternoon and check back Friday.", "confident"),
         ("customer", "Perfect, thank you.", "satisfied"),
     ],
+    [
+        ("agent", "Thanks for calling Northwind Sales, this is Meera. How can I help?", "warm"),
+        ("customer", "Hi, this is Arjun Nair from Bluepeak Logistics. We're looking to buy a fleet tracking plan for about forty vehicles.", "enthusiastic"),
+        ("agent", "Happy to help with that. Can I ask what you're using today, if anything?", "helpful"),
+        ("customer", "Nothing yet, we're evaluating a couple of vendors. Could you send over a quote?", "neutral"),
+        ("agent", "Of course. What's the best email for that?", "confident"),
+        ("customer", "It's arjun.nair@bluepeak.com. We'd want it to cover live tracking and driver behaviour scoring.", "neutral"),
+        ("agent", "Got it — I'll put together a quote covering both and send it today.", "reassuring"),
+        ("customer", "Great, thanks. If the numbers work we'd want to sign up before quarter end.", "enthusiastic"),
+        ("agent", "Understood, I'll flag that turnaround. Anything else before I let you go?", "warm"),
+        ("customer", "That covers it, thank you.", "satisfied"),
+    ],
 ]
 
 _TONE_AXES: dict[str, tuple[float, float]] = {

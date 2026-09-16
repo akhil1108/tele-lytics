@@ -37,7 +37,7 @@ export default function LoginPage() {
         onSubmit={onSubmit}
         className="w-full max-w-sm rounded-card border border-hairline bg-surface p-6"
       >
-        <h1 className="text-lg font-semibold text-ink">Call Analytics</h1>
+        <h1 className="text-lg font-semibold text-ink">Tele-lytics</h1>
         <p className="mt-1 text-sm text-ink-muted">
           Sign in to the supervisor dashboard.
         </p>

@@ -151,6 +151,45 @@ class SpeakerStopwords(BaseModel):
     )
 
 
+class CustomParameterScore(BaseModel):
+    """One org-defined rating parameter, scored for this call.
+
+    `parameter_name` must match a name from the `<rating_parameters>` block in
+    the prompt exactly — the pipeline matches on it and drops anything that
+    doesn't resolve, so an invented name is silently discarded rather than
+    breaking persistence.
+    """
+
+    parameter_name: str
+    score: float = Field(description="Within the parameter's stated scale.")
+    rationale: str | None = Field(
+        default=None, description="One line grounding the score in what was said."
+    )
+
+
+class LeadExtraction(BaseModel):
+    """Contact and intent details, plus the lead/other verdict, for this call.
+
+    A "lead" is a prospective customer with real purchase intent. Existing-
+    customer support, vendor/supplier calls, and wrong-number or spam calls are
+    "other" — leave `name`/`email`/`purpose`/`intent` null when nothing of the
+    kind was actually said; do not infer contact details from the phone number.
+    """
+
+    name: str | None = None
+    email: str | None = None
+    purpose: str | None = Field(default=None, description="Why they called, in a few words.")
+    intent: str | None = Field(
+        default=None, description="What they want to happen next, e.g. 'wants a demo'."
+    )
+    category: Literal["lead", "other"] = "other"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    reason: str | None = Field(
+        default=None, description="Why this call was or wasn't judged a lead."
+    )
+    source_quote: str | None = None
+
+
 class CoachingNotes(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     improvements: list[str] = Field(default_factory=list)
@@ -176,6 +215,16 @@ class CallAnalysis(BaseModel):
     )
 
     satisfaction: SatisfactionVerdict = Field(default_factory=SatisfactionVerdict)
+
+    category_name: str = Field(
+        description="Exact name of the single best-fitting entry from <categories>."
+    )
+    category_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    custom_ratings: list[CustomParameterScore] = Field(
+        default_factory=list,
+        description="One entry for every parameter listed in <rating_parameters>.",
+    )
+    lead: LeadExtraction = Field(default_factory=LeadExtraction)
 
     tasks: list[ExtractedTask] = Field(
         default_factory=list, description="Commitments made on the call that someone must complete."

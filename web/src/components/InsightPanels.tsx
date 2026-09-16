@@ -79,6 +79,18 @@ export function VerdictPanel({ analysis }: { analysis: Analysis }) {
             </div>
           )}
         </div>
+
+        {analysis.category_name && (
+          <div>
+            <dt className="text-xs text-ink-muted">Category</dt>
+            <dd className="mt-1 text-sm font-medium text-ink">{analysis.category_name}</dd>
+            {analysis.category_confidence !== null && (
+              <p className="mt-0.5 text-xs text-ink-muted">
+                {percent(analysis.category_confidence)} confidence
+              </p>
+            )}
+          </div>
+        )}
       </dl>
 
       {analysis.csat_evidence && (
@@ -96,6 +108,38 @@ export function VerdictPanel({ analysis }: { analysis: Analysis }) {
           ))}
         </ul>
       )}
+    </Card>
+  );
+}
+
+export function CustomRatingsPanel({ analysis }: { analysis: Analysis }) {
+  if (analysis.custom_ratings.length === 0) return null;
+
+  return (
+    <Card title="Custom ratings" subtitle="This org's own criteria, scored for this call">
+      <ul className="space-y-3">
+        {analysis.custom_ratings.map((rating) => (
+          <li key={rating.parameter_id}>
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="text-ink">{rating.parameter_name}</span>
+              <span className="tabular shrink-0 text-xs text-ink-muted">
+                {decimal(rating.score, 1)} / {rating.scale_max}
+              </span>
+            </div>
+            <div className="mt-1.5">
+              <MiniBar
+                value={rating.score - rating.scale_min}
+                max={rating.scale_max - rating.scale_min}
+                color={CHART.series1}
+                title={`${rating.score} of ${rating.scale_min}–${rating.scale_max}`}
+              />
+            </div>
+            {rating.rationale && (
+              <p className="mt-1.5 text-xs text-ink-muted">{rating.rationale}</p>
+            )}
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

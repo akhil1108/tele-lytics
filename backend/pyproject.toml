@@ -1,7 +1,7 @@
 [project]
-name = "call-analytics-backend"
+name = "tele-lytics-backend"
 version = "0.1.0"
-description = "Call analytics API, ingestion pipeline and LLM insight workers."
+description = "Tele-lytics API, ingestion pipeline and LLM insight workers."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

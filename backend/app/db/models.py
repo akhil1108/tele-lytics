@@ -1,4 +1,4 @@
-"""SQLAlchemy models for the call analytics platform.
+"""SQLAlchemy models for the Tele-lytics platform.
 
 Every tenant-scoped table carries `org_id` directly (rather than relying on a
 join to reach it) so that every query can filter on the tenant boundary with a
@@ -36,6 +36,8 @@ from app.db.enums import (
     CallStatus,
     DevicePlatform,
     JobStatus,
+    LeadCategory,
+    LeadStatus,
     NumberKind,
     Priority,
     ProcessingStage,
@@ -143,6 +145,63 @@ class PhoneNumberPolicy(Base):
     retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    created_by_user_id: Mapped[str | None] = fk_column(
+        "users.id", nullable=True, ondelete="SET NULL"
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+
+class RatingParameter(Base):
+    """A supervisor-defined criterion every call is scored against, e.g. "Politeness".
+
+    Scored by the stage-2 insight model on `[scale_min, scale_max]`. Deleting a
+    parameter does not touch past scores — `Analysis.custom_ratings` snapshots
+    the name and scale actually used at the time, so history stays readable.
+    """
+
+    __tablename__ = "rating_parameters"
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_rating_parameters_org_name"),
+        Index("ix_rating_parameters_org_active", "org_id", "is_active"),
+    )
+
+    id: Mapped[str] = pk_column()
+    org_id: Mapped[str] = fk_column("organizations.id")
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scale_min: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    scale_max: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_by_user_id: Mapped[str | None] = fk_column(
+        "users.id", nullable=True, ondelete="SET NULL"
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+
+class CallCategory(Base):
+    """A call type in this org's taxonomy, e.g. "Sales enquiry" or "Vendor call".
+
+    Exactly one active row per org carries `is_default=True` ("Other") — the
+    fallback the pipeline assigns when the model's answer matches nothing here,
+    and the API refuses to delete it so that fallback always resolves.
+    """
+
+    __tablename__ = "call_categories"
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", name="uq_call_categories_org_name"),
+        Index("ix_call_categories_org_active", "org_id", "is_active"),
+    )
+
+    id: Mapped[str] = pk_column()
+    org_id: Mapped[str] = fk_column("organizations.id")
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_by_user_id: Mapped[str | None] = fk_column(
         "users.id", nullable=True, ondelete="SET NULL"
     )
@@ -367,6 +426,16 @@ class Analysis(Base):
     interruption_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     resolution_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
+    # Snapshot of the matched category's name, kept even if the category row is
+    # later renamed or deleted — see `CallCategory`.
+    category_id: Mapped[str | None] = fk_column(
+        "call_categories.id", nullable=True, ondelete="SET NULL"
+    )
+    category_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    category_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # [{"parameter_id", "parameter_name", "score", "scale_min", "scale_max", "rationale"}, ...]
+    custom_ratings: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
     topics: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     keywords: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     # {"agent": {"um": 12, ...}, "customer": {...}, "totals": {...}}
@@ -416,6 +485,45 @@ class ActionItem(Base):
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     call: Mapped[Call] = relationship(back_populates="action_items")
+
+
+class Lead(Base):
+    """The pipeline's lead verdict for a call — one row per call, every time.
+
+    Recorded for every analysed call, not only genuine leads: `category`
+    distinguishes a real prospect enquiry (`lead`) from everything else
+    (`other`), so supervisors can audit what got filtered out as well as see
+    what was captured. `status` is worked by hand afterwards.
+    """
+
+    __tablename__ = "leads"
+    __table_args__ = (
+        UniqueConstraint("call_id", name="uq_leads_call"),
+        Index("ix_leads_org_category_created", "org_id", "category", "created_at"),
+    )
+
+    id: Mapped[str] = pk_column()
+    org_id: Mapped[str] = fk_column("organizations.id")
+    call_id: Mapped[str] = fk_column("calls.id")
+    agent_id: Mapped[str | None] = fk_column("agents.id", nullable=True, ondelete="SET NULL")
+
+    # Denormalised from the call so the leads list needs no join to render.
+    customer_number: Mapped[str] = mapped_column(String(20), nullable=False)
+    customer_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+    lead_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    lead_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    purpose: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intent: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    category: Mapped[str] = mapped_column(String(16), default=LeadCategory.OTHER, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(16), default=LeadStatus.NEW, nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
 
 
 class ProcessingJob(Base):

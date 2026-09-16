@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 # Configure before any application module reads settings.
-_TMP_STORAGE = tempfile.mkdtemp(prefix="call-analytics-test-")
+_TMP_STORAGE = tempfile.mkdtemp(prefix="tele-lytics-test-")
 os.environ.update(
     APP_ENV="test",
     DATABASE_URL="sqlite+aiosqlite:///:memory:",

@@ -51,6 +51,8 @@ class ClaudeAnalysisProvider:
             segments=payload.segments,
             call_context=payload.call_context,
             stopword_stats=payload.stopword_stats,
+            categories=payload.categories,
+            rating_parameters=payload.rating_parameters,
         )
 
         started = time.monotonic()

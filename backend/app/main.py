@@ -18,7 +18,7 @@ from app.db.session import engine
 log = get_logger(__name__)
 
 DESCRIPTION = """
-Call analytics platform API.
+Tele-lytics platform API.
 
 Two clients talk to this service:
 

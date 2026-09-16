@@ -14,7 +14,9 @@ from app.llm.schemas import (
     AnalysisResult,
     CallAnalysis,
     CoachingNotes,
+    CustomParameterScore,
     ExtractedTask,
+    LeadExtraction,
     RecommendedAction,
     RiskFlag,
     SatisfactionVerdict,
@@ -40,6 +42,41 @@ _CHURN = re.compile(
     r"\b(cancel\w*|downgrad\w*|switch(ing)? to|competitor\w*|close (my|the) account)\b", re.I
 )
 _ESCALATION = re.compile(r"\b(escalat\w*|supervisor|manager|complain\w*|legal)\b", re.I)
+
+# Keyword buckets used to pick a category *by meaning*; the actual name
+# returned is always one from the org's own list (payload.categories), matched
+# case-insensitively against these keys — see `_pick_category`.
+_CATEGORY_KEYWORDS = {
+    "sales_enquiry": {
+        "price", "pricing", "quote", "quotation", "buy", "purchase", "interested",
+        "demo", "trial", "plan", "upgrade", "subscription", "cost",
+    },
+    "vendor_call": {
+        "supplier", "vendor", "purchase order", "invoice from", "procurement",
+        "quotation for", "partnership", "distributor",
+    },
+    "transactional": {
+        "invoice", "payment", "bill", "billing", "renew", "renewal", "receipt",
+        "order status", "tracking", "delivery", "refund",
+    },
+    "complaint": {
+        "complaint", "unacceptable", "terrible", "worst", "disappointed", "angry",
+    },
+    "support_request": {
+        "help", "issue", "problem", "not working", "broken", "trouble", "error",
+    },
+    "recruitment": {"interview", "resume", "cv", "position", "hiring", "job opening"},
+    "wrong_number": {"wrong number", "who is this", "sorry, wrong"},
+}
+
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_NAME_INTRO = re.compile(
+    r"\b(?:my name is|this is|i am|i'm)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)"
+)
+_PURCHASE_INTENT = re.compile(
+    r"\b(interested in|looking to buy|would like to purchase|want to sign up|"
+    r"can (i|we) get a quote|thinking about upgrading)\b", re.I
+)
 
 _LABELS = (
     (-0.6, "very_negative"), (-0.2, "negative"), (0.2, "neutral"), (0.6, "positive"),
@@ -197,9 +234,17 @@ class MockAnalysisProvider:
         else:
             satisfied = overall > 0
 
+        category_name, category_confidence = _pick_category(full_text, payload.categories)
+        lead = _extract_lead(customer_segments, full_text, category_name, overall)
+        custom_ratings = _score_ratings(payload.rating_parameters, overall)
+
         stats = payload.stopword_stats or {}
         analysis = CallAnalysis(
             summary=_summarise(customer_segments, agent_segments, overall),
+            category_name=category_name,
+            category_confidence=category_confidence,
+            custom_ratings=custom_ratings,
+            lead=lead,
             topics=_topics(stats),
             keywords=[
                 item["term"]
@@ -274,6 +319,103 @@ def _dominant_tone(segments: list[dict]) -> str:
     if not tones:
         return "unknown"
     return max(set(tones), key=tones.count)
+
+
+def _pick_category(text: str, categories: list[dict]) -> tuple[str, float]:
+    """Match the transcript against each category's keyword bucket by name.
+
+    Falls back to whichever category the org flagged `default` (or the first
+    one, or "Other" as a last resort if the org has none configured yet).
+    """
+    default_name = next(
+        (c["name"] for c in categories if c.get("default")),
+        categories[0]["name"] if categories else "Other",
+    )
+    if not categories:
+        return default_name, 0.3
+
+    lowered = text.lower()
+    best_name: str | None = None
+    best_hits = 0
+    for category in categories:
+        bucket_key = category["name"].strip().lower().replace(" ", "_")
+        keywords = _CATEGORY_KEYWORDS.get(bucket_key)
+        if not keywords:
+            # Org renamed/added a category we have no bucket for — try a loose
+            # match on its own name appearing in the transcript instead.
+            keywords = {category["name"].lower()}
+        hits = sum(1 for kw in keywords if kw in lowered)
+        if hits > best_hits:
+            best_hits = hits
+            best_name = category["name"]
+
+    if best_name is None:
+        return default_name, 0.3
+    return best_name, round(min(0.9, 0.5 + 0.1 * best_hits), 2)
+
+
+def _extract_lead(
+    customer_segments: list[dict], full_text: str, category_name: str, overall: float
+) -> LeadExtraction:
+    # Contact details are only ever taken from what the CUSTOMER said — the
+    # agent also self-introduces by name at the top of every call, and matching
+    # against the whole transcript would misattribute that as the lead's name.
+    customer_text = "\n".join(s.get("text", "") for s in customer_segments)
+    email_match = _EMAIL.search(customer_text)
+    email = email_match.group(0).rstrip(".,;:") if email_match else None
+    name_match = _NAME_INTRO.search(customer_text)
+    has_intent = bool(_PURCHASE_INTENT.search(full_text))
+
+    looks_like_lead = (
+        has_intent
+        and category_name.strip().lower() not in {"vendor_call", "vendor call", "transactional"}
+        and overall >= -0.1
+    )
+
+    opening = customer_segments[0].get("text", "").strip() if customer_segments else None
+    return LeadExtraction(
+        name=name_match.group(1) if (name_match and looks_like_lead) else None,
+        email=email if looks_like_lead else None,
+        purpose=(opening[:160] if (looks_like_lead and opening) else None),
+        intent="Wants pricing or a demo" if (looks_like_lead and has_intent) else None,
+        category="lead" if looks_like_lead else "other",
+        confidence=0.65 if looks_like_lead else 0.55,
+        reason=(
+            "Customer expressed purchase intent."
+            if looks_like_lead
+            else "No purchase intent detected; reads as an existing-customer or non-sales call."
+        ),
+        source_quote=opening[:160] if (looks_like_lead and opening) else None,
+    )
+
+
+def _score_ratings(parameters: list[dict], overall: float) -> list[CustomParameterScore]:
+    """Scale overall call sentiment into each parameter's own range.
+
+    A heuristic stand-in for real per-criterion judgement — good enough that
+    demo data shows varied, plausible-looking scores rather than one constant.
+    """
+    scores: list[CustomParameterScore] = []
+    for param in parameters:
+        lo = float(param.get("scale_min", 1))
+        hi = float(param.get("scale_max", 5))
+        # overall runs -1..1; map onto [lo, hi] and round to the nearest 0.5.
+        raw = lo + (overall + 1) / 2 * (hi - lo)
+        score = round(max(lo, min(hi, raw)) * 2) / 2
+        scores.append(
+            CustomParameterScore(
+                parameter_name=param["name"],
+                score=score,
+                rationale=(
+                    "Call sentiment stayed positive throughout."
+                    if overall > 0.2
+                    else "Call sentiment was mixed or negative."
+                    if overall < -0.2
+                    else "Call was largely neutral on this measure."
+                ),
+            )
+        )
+    return scores
 
 
 def _summarise(customer: list[dict], agent: list[dict], score: float) -> str:
