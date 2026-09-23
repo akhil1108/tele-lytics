@@ -7,7 +7,7 @@ import { BUCKET_COLOR, sentimentBucket } from "@/lib/charts";
 import { SENTIMENT_LABELS, stamp, titleCase } from "@/lib/format";
 import type { Segment, Transcript } from "@/lib/types";
 
-import { Badge, Button } from "./ui";
+import { Badge } from "./ui";
 
 /**
  * The call transcript, turn by turn.
