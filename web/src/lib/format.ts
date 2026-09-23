@@ -59,11 +59,6 @@ export function relative(iso: string | null | undefined): string {
   return `${Math.floor(deltaSeconds / 86_400)}d ago`;
 }
 
-export function maskNumber(e164: string): string {
-  if (e164.length <= 7) return e164;
-  return `${e164.slice(0, 3)}${"•".repeat(e164.length - 7)}${e164.slice(-4)}`;
-}
-
 export const SENTIMENT_LABELS: Record<Sentiment, string> = {
   very_negative: "Very negative",
   negative: "Negative",
