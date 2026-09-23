@@ -5,6 +5,13 @@ Run alongside the API:
     python -m app.worker
 
 Several workers can run at once — claiming is atomic, so they will not collide.
+
+`Worker.run()` is this loop: poll forever, idle-backing-off between empty
+ticks. Where nothing can run a long-lived process — a Cloudflare Container
+has no equivalent of "just keep looping," only requests a Durable Object
+routes in — `Worker.run_once()` is the same unit of work (one claim-and-
+process pass) exposed for something external to invoke on a schedule
+instead. See `POST /internal/worker/tick` in `app/main.py`.
 """
 
 from __future__ import annotations
@@ -48,11 +55,7 @@ class Worker:
             },
         )
         while not self._stopping.is_set():
-            try:
-                processed = await self._tick()
-            except Exception:
-                log.exception("worker tick failed")
-                processed = 0
+            processed = await self.run_once()
 
             if processed == 0:
                 # Idle: wait out the poll interval, but wake immediately on stop.
@@ -63,6 +66,16 @@ class Worker:
                 except TimeoutError:
                     pass
         log.info("worker stopped", extra={"worker_id": self.worker_id})
+
+    async def run_once(self) -> int:
+        """One claim-and-process pass. Never raises — a failed tick logs and
+        reports zero processed, same as an empty queue, so a caller (the
+        loop above, or an HTTP handler) doesn't need its own error handling."""
+        try:
+            return await self._tick()
+        except Exception:
+            log.exception("worker tick failed")
+            return 0
 
     async def _tick(self) -> int:
         await self._maintenance()

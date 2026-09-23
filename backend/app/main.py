@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.router import api_router, ws_router
 from app.core.config import settings
-from app.core.errors import AppError
+from app.core.errors import AppError, Unauthorized
 from app.core.logging import configure_logging, get_logger
 from app.db.session import engine
+from app.worker import Worker
 
 log = get_logger(__name__)
 
@@ -100,6 +101,26 @@ async def health() -> dict:
             "storage": settings.storage_backend,
         },
     }
+
+
+# Constructed once, not per request: `Worker` throttles its own maintenance
+# pass (reclaiming stale jobs, purging expired recordings) to once per
+# `_MAINTENANCE_INTERVAL`, which only holds if the same instance answers
+# every tick. Harmless if this process also happens to run the real
+# `python -m app.worker` loop — same job-claiming table, same atomicity.
+_tick_worker = Worker()
+
+
+@app.post("/internal/worker/tick", tags=["meta"])
+async def worker_tick(authorization: str | None = Header(default=None)) -> dict:
+    """One pipeline-worker pass, for callers with no long-lived process to
+    loop in — see the module docstring in `app/worker.py`. Disabled unless
+    `WORKER_TICK_SECRET` is set; the docker-compose `worker` service never
+    calls this, it runs the real loop directly."""
+    if not settings.worker_tick_secret or authorization != f"Bearer {settings.worker_tick_secret}":
+        raise Unauthorized()
+    processed = await _tick_worker.run_once()
+    return {"processed": processed}
 
 
 app.include_router(api_router)
