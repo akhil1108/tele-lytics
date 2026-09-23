@@ -27,6 +27,17 @@ class Settings(BaseSettings):
     # token with read access here.
     hf_token: str | None = None
 
+    # Non-English -> English translation, per segment, via OpenAI's hosted
+    # Whisper. Runs on the audio directly rather than on already-transcribed
+    # text — a local model (Whisper here) transcribing code-switched Indian-
+    # language speech tends to romanize it (Latin script, e.g. "agi dhe"
+    # rather than ಆಗಿದೆ), and text-translation models expect native script,
+    # so they silently fail to translate romanized input. Translating from
+    # audio has no such requirement. `whisper-1` is the only OpenAI model
+    # the /audio/translations endpoint currently supports.
+    openai_api_key: str | None = None
+    openai_translation_model: str = "whisper-1"
+
     # ---- Serving ----
     # Matches STT_API_KEY on the backend: when set, this service requires
     # `Authorization: Bearer <service_api_key>` on every request.

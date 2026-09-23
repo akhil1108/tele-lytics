@@ -30,3 +30,13 @@ soundfile>=0.12
 # Gated model — accept terms at huggingface.co/pyannote/speaker-diarization-3.1
 # AND huggingface.co/pyannote/segmentation-3.0 before HF_TOKEN can download it.
 pyannote.audio==3.3.2
+
+# Non-English -> English translation, via OpenAI's hosted Whisper
+# (client.audio.translations.create) — see the note on OPENAI_API_KEY in
+# config.py for why this runs on audio rather than as a local text-translation
+# model. (An earlier attempt used AI4Bharat's IndicTrans2 locally; that's gone
+# — its dependency chain includes `fairseq`, effectively unmaintained since
+# 2022 and broken on Python 3.11+, and even working it doesn't solve the real
+# problem: Whisper romanizes code-switched speech, and IndicTrans2 needs
+# native script input.)
+openai>=1.0
