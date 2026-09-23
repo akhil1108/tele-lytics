@@ -9,6 +9,8 @@ pays the load cost.
 
 from __future__ import annotations
 
+import logging
+import math
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -19,6 +21,8 @@ import torch
 import torchaudio
 
 from config import settings
+
+log = logging.getLogger(__name__)
 
 
 def _resolve_device() -> str:
@@ -56,6 +60,10 @@ class AsrChunk:
     start_s: float
     end_s: float
     text: str
+    # None for local Whisper (the high-level pipeline() API doesn't expose
+    # per-chunk confidence without dropping to a lower-level generate()
+    # call); populated from OpenAI's avg_logprob when translation runs.
+    confidence: float | None = None
 
 
 def transcribe(wav_path: str, *, language: str | None, vocabulary: list[str]) -> tuple[str, list[AsrChunk]]:
@@ -79,11 +87,22 @@ def transcribe(wav_path: str, *, language: str | None, vocabulary: list[str]) ->
             pass
 
     result = asr(wav_path, generate_kwargs=generate_kwargs)
-    chunks = [
-        AsrChunk(start_s=c["timestamp"][0] or 0.0, end_s=c["timestamp"][1] or 0.0, text=c["text"].strip())
-        for c in result.get("chunks", [])
-        if c["text"].strip()
-    ]
+    chunks = []
+    for c in result.get("chunks", []):
+        text = c["text"].strip()
+        if not text:
+            continue
+        start_s = c["timestamp"][0] or 0.0
+        # Whisper sometimes can't predict an ending timestamp — cut off mid-
+        # word, or trailing into silence/noise it's hallucinating a
+        # repetition loop over. Falling back to a hardcoded 0.0 here used to
+        # produce end_s < start_s, an inverted range that broke diarization
+        # overlap-matching and fed a near-empty audio slice to the tone
+        # model. Falling back to start_s instead keeps it a valid
+        # (zero-length) segment, which slice_waveform already pads safely.
+        end_s = c["timestamp"][1]
+        end_s = end_s if end_s is not None else start_s
+        chunks.append(AsrChunk(start_s=start_s, end_s=end_s, text=text))
     return result.get("text", "").strip(), chunks
 
 
@@ -234,12 +253,22 @@ def load_waveform(wav_path: str) -> tuple[torch.Tensor, int]:
     return waveform.mean(dim=0), sample_rate  # mono
 
 
+# wav2vec2-style conv stacks need a few hundred samples of real signal before
+# their kernels fit at all; 1600 (100ms at 16kHz) is comfortable headroom.
+# A very short ASR chunk — or the degenerate start==end case below — would
+# otherwise crash the tone model with a "kernel size > input size" error.
+_MIN_TONE_SAMPLES = 1600
+
+
 def slice_waveform(waveform: torch.Tensor, sample_rate: int, start_s: float, end_s: float) -> torch.Tensor:
     start = max(0, int(start_s * sample_rate))
     end = min(waveform.shape[-1], int(end_s * sample_rate))
     if end <= start:
-        return waveform[start : start + 1]
-    return waveform[start:end]
+        end = start + 1
+    segment = waveform[start:end]
+    if segment.shape[-1] < _MIN_TONE_SAMPLES:
+        segment = torch.nn.functional.pad(segment, (0, _MIN_TONE_SAMPLES - segment.shape[-1]))
+    return segment
 
 
 def warm_up() -> None:
@@ -248,64 +277,80 @@ def warm_up() -> None:
     if settings.hf_token:
         _diarization_pipeline()
     _emotion_model()
-    _translation_model()
 
 
 # ------------------------------------------------------- Indic -> English
 
 
-@lru_cache(maxsize=1)
-def _translation_model():
-    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+def needs_translation(whisper_language: str | None) -> bool:
+    """Any non-English language hint warrants a translation pass.
 
-    from IndicTransToolkit.processor import IndicProcessor
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        settings.indic_translation_model, trust_remote_code=True, token=settings.hf_token
-    )
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        settings.indic_translation_model, trust_remote_code=True, token=settings.hf_token
-    ).to(DEVICE).eval()
-    processor = IndicProcessor(inference=True)
-    return tokenizer, model, processor
-
-
-# Whisper's language hint uses ISO 639-1-ish codes; IndicTrans2 wants
-# FLORES-200 script-tagged codes. Only the languages Whisper actually
-# recognises AND IndicTrans2's indic-en model was trained on are listed —
-# a handful of IndicTrans2's low-resource languages (Bodo, Dogri, Konkani,
-# Santali, ...) have no Whisper-recognised code to map from at all.
-_WHISPER_TO_FLORES: dict[str, str] = {
-    "as": "asm_Beng", "bn": "ben_Beng", "gu": "guj_Gujr", "hi": "hin_Deva",
-    "kn": "kan_Knda", "ml": "mal_Mlym", "mr": "mar_Deva", "ne": "npi_Deva",
-    "or": "ory_Orya", "pa": "pan_Guru", "sa": "san_Deva", "sd": "snd_Deva",
-    "ta": "tam_Taml", "te": "tel_Telu", "ur": "urd_Arab",
-}
-
-
-def flores_code_for(whisper_language: str | None) -> str | None:
-    """None means "don't translate" — English, or a language IndicTrans2's
-    indic-en model doesn't cover."""
-    if not whisper_language:
-        return None
-    return _WHISPER_TO_FLORES.get(whisper_language.split("-")[0].lower())
-
-
-def translate_to_english(texts: list[str], src_lang: str) -> list[str]:
-    """Batch-translates already-transcribed native-language text to English.
-
-    Whole-call, not per-segment: the source language comes from the same
-    hint Whisper transcribed with, so a call genuinely code-switching
-    between, say, Kannada and English mid-call will have its English
-    portions run back through translation too — usually a near no-op, but
-    worth knowing rather than assuming this handles code-switching cleanly.
+    No fixed language allowlist: unlike the local text-translation model
+    this replaced, OpenAI's translation endpoint isn't limited to a specific
+    set of Indic languages, so there's nothing narrower to check against.
     """
-    if not texts:
-        return texts
-    tokenizer, model, processor = _translation_model()
-    batch = processor.preprocess_batch(texts, src_lang=src_lang, tgt_lang="eng_Latn")
-    inputs = tokenizer(batch, padding="longest", truncation=True, max_length=256, return_tensors="pt")
-    with torch.no_grad():
-        generated = model.generate(**inputs.to(DEVICE), num_beams=5, max_length=256)
-    decoded = tokenizer.batch_decode(generated, skip_special_tokens=True)
-    return processor.postprocess_batch(decoded, lang="eng_Latn")
+    if not whisper_language:
+        return False
+    return whisper_language.split("-")[0].lower() != "en"
+
+
+@lru_cache(maxsize=1)
+def _openai_client():
+    from openai import OpenAI
+
+    if not settings.openai_api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not configured; set it or omit a non-English "
+            "language hint to skip translation"
+        )
+    return OpenAI(api_key=settings.openai_api_key)
+
+
+def translate_full_call(wav_path: str) -> tuple[str, list[AsrChunk]] | None:
+    """Translates the whole recording to English in one call, replacing
+    local Whisper's transcription step entirely when this runs.
+
+    Whole-call, not per-segment, deliberately: an earlier per-segment
+    version sent each ASR chunk's audio to OpenAI in isolation, and short,
+    ambiguous clips (under ~1s) translated worse than local Whisper's own
+    same-language read of them, because the model had no surrounding
+    conversation to disambiguate against. One call over the full audio
+    keeps that context, and `response_format="verbose_json"` gives back
+    real per-segment timestamps *and* an avg_logprob-derived confidence in
+    the same response — solving two problems at once.
+
+    Returns None on any failure (missing key, API error) so the caller can
+    fall back to local (untranslated) transcription rather than losing the
+    call entirely.
+    """
+    try:
+        client = _openai_client()
+    except RuntimeError as exc:
+        log.warning("translation skipped: %s", exc)
+        return None
+
+    try:
+        with open(wav_path, "rb") as f:
+            response = client.audio.translations.create(
+                model=settings.openai_translation_model,
+                file=f,
+                response_format="verbose_json",
+            )
+    except Exception:
+        log.exception("OpenAI translation call failed")
+        return None
+
+    chunks = [
+        AsrChunk(
+            start_s=seg.start,
+            end_s=seg.end,
+            text=seg.text.strip(),
+            # avg_logprob is a per-token log-probability, not itself a 0..1
+            # confidence — exponentiating gives a reasonable proxy, clamped
+            # to guard against float edge cases at the extremes.
+            confidence=max(0.0, min(1.0, math.exp(seg.avg_logprob))),
+        )
+        for seg in response.segments
+        if seg.text.strip()
+    ]
+    return response.text.strip(), chunks

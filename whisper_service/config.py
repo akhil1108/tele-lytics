@@ -21,15 +21,22 @@ class Settings(BaseSettings):
     whisper_model: str = "openai/whisper-large-v3-turbo"
     diarization_model: str = "pyannote/speaker-diarization-3.1"
     emotion_model: str = "superb/wav2vec2-base-superb-er"
-    # Distilled 200M variant — "suitable for production use" per AI4Bharat's
-    # own docs; the 1B checkpoint (ai4bharat/indictrans2-indic-en-1B) trades
-    # latency for a further accuracy bump if quality matters more here.
-    indic_translation_model: str = "ai4bharat/indictrans2-indic-en-dist-200M"
 
     # pyannote's diarization model is gated on the Hub — you must accept its
     # terms at huggingface.co/pyannote/speaker-diarization-3.1 and pass a
     # token with read access here.
     hf_token: str | None = None
+
+    # Non-English -> English translation, per segment, via OpenAI's hosted
+    # Whisper. Runs on the audio directly rather than on already-transcribed
+    # text — a local model (Whisper here) transcribing code-switched Indian-
+    # language speech tends to romanize it (Latin script, e.g. "agi dhe"
+    # rather than ಆಗಿದೆ), and text-translation models expect native script,
+    # so they silently fail to translate romanized input. Translating from
+    # audio has no such requirement. `whisper-1` is the only OpenAI model
+    # the /audio/translations endpoint currently supports.
+    openai_api_key: str | None = None
+    openai_translation_model: str = "whisper-1"
 
     # ---- Serving ----
     # Matches STT_API_KEY on the backend: when set, this service requires

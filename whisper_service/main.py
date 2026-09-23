@@ -80,24 +80,26 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
     waveform, sample_rate = models.load_waveform(wav_path)
     duration_seconds = round(waveform.shape[-1] / sample_rate, 2)
 
-    full_text, chunks = models.transcribe(
-        wav_path,
-        language=meta.get("language"),
-        vocabulary=meta.get("vocabulary") or [],
-    )
-
-    # Translate to English when the call was transcribed in a supported
-    # Indian language — a no-op for English/unsupported languages, since
-    # flores_code_for returns None and nothing below runs.
-    original_texts: dict[int, str] | None = None
-    src_lang = models.flores_code_for(meta.get("language"))
-    if src_lang and chunks:
-        native_texts = [c.text for c in chunks] + [full_text]
-        translated = models.translate_to_english(native_texts, src_lang)
-        original_texts = {i: chunks[i].text for i in range(len(chunks))}
-        for chunk, english_text in zip(chunks, translated[:-1]):
-            chunk.text = english_text
-        full_text = translated[-1]
+    # Translation replaces local transcription entirely for this call, rather
+    # than layering on top of it — one OpenAI call over the whole recording
+    # gets real segment timestamps AND full-conversation context for the
+    # translation, both of which a local-transcribe-then-translate-per-
+    # segment split loses. Falls back to local (untranslated) transcription
+    # if OpenAI is unavailable, so a missing key degrades to "same language"
+    # rather than failing the call.
+    translated = None
+    translate = models.needs_translation(meta.get("language"))
+    if translate:
+        translated = models.translate_full_call(wav_path)
+    if translated:
+        full_text, chunks = translated
+    else:
+        translate = False
+        full_text, chunks = models.transcribe(
+            wav_path,
+            language=meta.get("language"),
+            vocabulary=meta.get("vocabulary") or [],
+        )
 
     turns: list[models.Turn] = []
     roles: dict[str, str] = {}
@@ -107,7 +109,7 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
 
     segments = []
     tone_labels: list[str] = []
-    for idx, chunk in enumerate(chunks):
+    for chunk in chunks:
         speaker = models.speaker_for(turns, roles, chunk.start_s, chunk.end_s) if turns else "unknown"
         segment_wave = models.slice_waveform(waveform, sample_rate, chunk.start_s, chunk.end_s)
         tone = models.score_tone(segment_wave, sample_rate)
@@ -119,10 +121,7 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
                 "start_ms": int(chunk.start_s * 1000),
                 "end_ms": int(chunk.end_s * 1000),
                 "text": chunk.text,
-                # Kept for transparency/audit when this segment was
-                # translated — the adapter preserves unrecognised fields
-                # like this one in `transcripts.raw` rather than dropping it.
-                "original_text": original_texts[idx] if original_texts else None,
+                "confidence": chunk.confidence,
                 "tone": {
                     "label": tone.label,
                     "confidence": tone.confidence,
@@ -136,9 +135,9 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
 
     return {
         "provider": "whisper-service",
-        "model": settings.whisper_model,
+        "model": settings.openai_translation_model if translate else settings.whisper_model,
         "language": meta.get("language"),
-        "translated_from": src_lang,
+        "translated_from": meta.get("language") if translate else None,
         "text": full_text,
         "duration_seconds": duration_seconds,
         "tone_overall": tone_overall,
