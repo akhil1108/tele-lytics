@@ -1,0 +1,79 @@
+// Thin Cloudflare Worker shim in front of the Python backend container.
+//
+// Cloudflare Containers are request-routed (a Durable Object wakes the
+// container to answer a fetch, then lets it sleep) — there is no equivalent
+// of `python -m app.worker`'s long-lived polling loop. So this Worker does
+// two things:
+//   1. Proxies ordinary API traffic straight through to the container.
+//   2. Drives the pipeline by calling POST /internal/worker/tick on a timer,
+//      via a self-perpetuating Durable Object alarm (the idiomatic Cloudflare
+//      pattern for periodic background work — see
+//      https://developers.cloudflare.com/durable-objects/api/alarms/).
+//
+// One singleton container instance (fixed Durable Object name) runs the
+// whole pipeline; the alarm keeps it awake roughly every TICK_INTERVAL_MS
+// regardless of API traffic, and `run_once()` in app/worker.py is a no-op
+// (processed: 0) when the job queue is empty, so over-ticking is harmless.
+import { Container } from "@cloudflare/containers";
+
+interface Env {
+  BACKEND: DurableObjectNamespace<Backend>;
+  WORKER_TICK_SECRET: string;
+}
+
+const TICK_INTERVAL_MS = 30_000;
+// Fixed name, not per-request — every request and every alarm must land on
+// the same Durable Object instance for the alarm loop to mean anything.
+const SINGLETON_NAME = "pipeline-worker";
+
+export class Backend extends Container<Env> {
+  defaultPort = 8000;
+  // Cloudflare's own floor is ~10 minutes and it cannot be disabled; the
+  // alarm below re-wakes the container well before that anyway.
+  sleepAfter = "10m";
+
+  constructor(ctx: DurableObjectState<{}>, env: Env) {
+    super(ctx, env);
+    // Async work can't happen directly in a constructor — block the DO's
+    // first request until the initial alarm is scheduled.
+    ctx.blockConcurrencyWhile(async () => {
+      const existing = await ctx.storage.getAlarm();
+      if (existing === null) {
+        await ctx.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+      }
+    });
+  }
+
+  override onStart() {
+    console.log("backend container started");
+  }
+
+  override onStop() {
+    console.log("backend container stopped");
+  }
+
+  async alarm(): Promise<void> {
+    try {
+      const res = await this.containerFetch("/internal/worker/tick", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.env.WORKER_TICK_SECRET}` },
+      });
+      if (!res.ok) {
+        console.error(`worker tick returned ${res.status}`);
+      }
+    } catch (err) {
+      // A transient failure (container mid-restart, DB hiccup) shouldn't
+      // break the loop — just try again next tick.
+      console.error("worker tick failed", err);
+    }
+    await this.ctx.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+  }
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const id = env.BACKEND.idFromName(SINGLETON_NAME);
+    const container = env.BACKEND.get(id);
+    return container.fetch(request);
+  },
+};
