@@ -334,3 +334,49 @@ async def test_reimporting_the_same_file_maps_to_the_same_call(
 
     assert first.status_code == second.status_code == 201
     assert first.json()["id"] == second.json()["id"]
+
+
+async def test_worker_tick_endpoint_is_disabled_without_a_secret_configured(
+    client: AsyncClient, device_headers: dict
+) -> None:
+    """The Cloudflare-Container trigger path must stay off by default —
+    docker-compose's `worker` service runs the real loop and never calls
+    this, so an unconfigured deployment should reject it outright."""
+    call = await _logged_call(client, device_headers)
+    await _upload(client, device_headers, call["id"])
+
+    response = await client.post(
+        "/internal/worker/tick", headers={"Authorization": "Bearer anything"}
+    )
+    assert response.status_code == 401
+
+
+async def test_worker_tick_endpoint_processes_the_queue_once_enabled(
+    client: AsyncClient, session: AsyncSession, device_headers: dict, recording_policy
+) -> None:
+    from app.main import settings as main_settings
+
+    call = await _logged_call(client, device_headers)
+    await _upload(client, device_headers, call["id"])
+
+    main_settings.worker_tick_secret = "test-tick-secret"
+    try:
+        wrong = await client.post(
+            "/internal/worker/tick", headers={"Authorization": "Bearer wrong"}
+        )
+        assert wrong.status_code == 401
+
+        # One tick claims and runs whatever stage is queued next — here,
+        # transcription (analysis follows once a transcript exists).
+        right = await client.post(
+            "/internal/worker/tick", headers={"Authorization": "Bearer test-tick-secret"}
+        )
+        assert right.status_code == 200
+        assert right.json()["processed"] == 1
+
+        transcripts = (
+            await session.execute(select(Transcript).where(Transcript.call_id == call["id"]))
+        ).scalars().all()
+        assert len(transcripts) == 1
+    finally:
+        main_settings.worker_tick_secret = None

@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     worker_batch_size: int = 4
     worker_max_attempts: int = 3
     max_recording_mb: int = 200
+    # Set to enable POST /internal/worker/tick — a single claim-and-process
+    # pass over the job queue, triggered externally rather than by the
+    # `python -m app.worker` loop's own polling. This is what lets the worker
+    # run as a Cloudflare Container: there is no long-lived process to poll
+    # in a loop there, only a Durable Object alarm invoking this endpoint on
+    # a schedule. Unset (the default) leaves the endpoint disabled — the
+    # `worker` service in docker-compose.yml never needs it, since it runs
+    # the real loop directly.
+    worker_tick_secret: str | None = None
 
     # ---- Retention ----
     default_retention_days: int = 90
