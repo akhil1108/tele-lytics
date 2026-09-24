@@ -1,0 +1,42 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pydantic-settings>=2.4
+
+# Pinned as a known-compatible set, not open ">=" bounds: the ML stack here
+# moves fast enough that the latest release of each, resolved independently,
+# does not necessarily work together. Specifically —
+#   - torch/torchaudio must be an exact matched pair (torchaudio's release
+#     cadence has fallen behind torch's; pip will happily install torch 2.14
+#     next to torchaudio 2.11, which do not agree on a shared API).
+#   - torchaudio 2.4.x is the newest line that still ships the classic
+#     I/O API (AudioMetaData, load, info) that pyannote.audio depends on —
+#     newer torchaudio releases are migrating that surface to a separate
+#     `torchcodec` package pyannote does not yet use.
+#   - pyannote.audio is pinned below 4.0: the 4.x pipeline pulls in a chain
+#     of additional gated "community" scoring models beyond the two gates
+#     documented in this file's README; 3.x's simpler embedding+segmentation
+#     pipeline needs only those two.
+#
+# Swap the two torch lines for a CUDA build on a GPU host, e.g.:
+#   pip install torch==2.4.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+torch==2.4.1
+torchaudio==2.4.1
+
+transformers==4.46.3
+accelerate>=0.33
+soundfile>=0.12
+
+# Gated model — accept terms at huggingface.co/pyannote/speaker-diarization-3.1
+# AND huggingface.co/pyannote/segmentation-3.0 before HF_TOKEN can download it.
+pyannote.audio==3.3.2
+
+# Non-English -> English translation, via OpenAI's hosted Whisper
+# (client.audio.translations.create) — see the note on OPENAI_API_KEY in
+# config.py for why this runs on audio rather than as a local text-translation
+# model. (An earlier attempt used AI4Bharat's IndicTrans2 locally; that's gone
+# — its dependency chain includes `fairseq`, effectively unmaintained since
+# 2022 and broken on Python 3.11+, and even working it doesn't solve the real
+# problem: Whisper romanizes code-switched speech, and IndicTrans2 needs
+# native script input.)
+openai>=1.0

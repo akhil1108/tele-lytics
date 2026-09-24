@@ -1,0 +1,112 @@
+# Local stack: database, API, pipeline worker, dashboard.
+#
+#   cp .env.example .env
+#   docker compose up --build
+#
+# Then seed a demo organisation:
+#   docker compose exec api python -m scripts.seed --calls 60
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: calls
+      POSTGRES_PASSWORD: calls
+      POSTGRES_DB: callanalytics
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calls -d callanalytics"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://calls:calls@db:5432/callanalytics
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_PATH: /data/storage
+      STT_PROVIDER: ${STT_PROVIDER:-mock}
+      STT_ENDPOINT_URL: ${STT_ENDPOINT_URL:-}
+      STT_API_KEY: ${STT_API_KEY:-}
+      ANALYSIS_PROVIDER: ${ANALYSIS_PROVIDER:-mock}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      APP_ENV: ${APP_ENV:-development}
+    volumes:
+      - storage:/data/storage
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://calls:calls@db:5432/callanalytics
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_PATH: /data/storage
+      STT_PROVIDER: ${STT_PROVIDER:-mock}
+      STT_ENDPOINT_URL: ${STT_ENDPOINT_URL:-}
+      STT_API_KEY: ${STT_API_KEY:-}
+      ANALYSIS_PROVIDER: ${ANALYSIS_PROVIDER:-mock}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      APP_ENV: ${APP_ENV:-development}
+    volumes:
+      # Same volume as the API: the worker reads the audio the API wrote.
+      - storage:/data/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    # Scale with: docker compose up --scale worker=3
+    # Claiming is atomic, so workers will not collide.
+
+  web:
+    build:
+      context: ./web
+      args:
+        # Next.js inlines NEXT_PUBLIC_* at build time, so it is a build arg.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  # Optional: a real speech model for `api`/`worker` to call instead of the
+  # mock STT provider. Heavy (downloads ~3GB of weights on first run) and not
+  # started by `docker compose up` on its own — bring it up with:
+  #   docker compose --profile whisper up --build
+  # then set STT_PROVIDER=shared_model and
+  # STT_ENDPOINT_URL=http://whisper:8001/transcribe in .env.
+  # See whisper_service/README.md.
+  whisper:
+    profiles: ["whisper"]
+    build:
+      context: ./whisper_service
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      SERVICE_API_KEY: ${STT_API_KEY:-}
+      WHISPER_MODEL: ${WHISPER_MODEL:-openai/whisper-large-v3-turbo}
+    volumes:
+      - hf_cache:/data/hf-cache
+    ports:
+      - "8001:8001"
+
+volumes:
+  pgdata:
+  storage:
+  hf_cache:

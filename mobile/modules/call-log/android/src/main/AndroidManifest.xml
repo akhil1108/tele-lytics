@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Reading the call log is how the app accounts for calls that produced no
+    recording. It is a restricted permission: see docs/MOBILE_RECORDING.md for
+    what that means for distribution.
+  -->
+  <uses-permission android:name="android.permission.READ_CALL_LOG" />
+</manifest>

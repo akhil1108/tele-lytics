@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Tele-lytics Agent",
+    "slug": "call-analytics-agent",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "callanalytics",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.callanalytics.agent",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "The app records your work calls so they can be transcribed and analysed for quality. Recording only happens on numbers your administrator has enabled, and only after the consent announcement.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.example.callanalytics.agent",
+      "permissions": [
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "READ_CALL_LOG",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MICROPHONE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "The app records your work calls so they can be transcribed and analysed for quality."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:8000"
+    }
+  }
+}
