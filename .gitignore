@@ -45,3 +45,4 @@ storage/
 .idea/
 .vscode/
 *.swp
+.neon
