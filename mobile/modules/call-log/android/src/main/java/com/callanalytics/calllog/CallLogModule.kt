@@ -15,9 +15,11 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * The log still knows the number, the exact duration and which way the call
  * went, and that is enough for volume and talk-time reporting.
  *
- * Only the fields the platform actually uses are read. The call log also holds
- * contact names, photo URIs, geocoded locations and voicemail transcriptions;
- * none of that is touched.
+ * Only the fields the platform actually uses are read. `CACHED_NAME` is the
+ * name the dialler showed for the call — a saved contact, or the caller-ID
+ * app's lookup (Truecaller writes it here when it is the default dialler). The
+ * call log also holds photo URIs, geocoded locations and voicemail
+ * transcriptions; none of that is touched.
  */
 class CallLogModule : Module() {
 
@@ -57,6 +59,7 @@ class CallLogModule : Module() {
       CallLog.Calls.DATE,
       CallLog.Calls.DURATION,
       CallLog.Calls.TYPE,
+      CallLog.Calls.CACHED_NAME,
     )
 
     val entries = mutableListOf<Map<String, Any?>>()
@@ -75,6 +78,7 @@ class CallLogModule : Module() {
       val dateColumn = cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)
       val durationColumn = cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION)
       val typeColumn = cursor.getColumnIndexOrThrow(CallLog.Calls.TYPE)
+      val nameColumn = cursor.getColumnIndex(CallLog.Calls.CACHED_NAME)
 
       while (cursor.moveToNext()) {
         entries.add(
@@ -84,6 +88,7 @@ class CallLogModule : Module() {
             "timestamp" to cursor.getLong(dateColumn).toDouble(),
             "durationSeconds" to cursor.getInt(durationColumn),
             "type" to typeName(cursor.getInt(typeColumn)),
+            "name" to if (nameColumn >= 0) cursor.getString(nameColumn)?.takeIf { it.isNotBlank() } else null,
           )
         )
       }

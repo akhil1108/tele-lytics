@@ -133,7 +133,11 @@ export const api = {
 
   myCalls: (limit = 30) => request<Call[]>(`/v1/mobile/calls?limit=${limit}`),
 
-  summary: () => request<DaySummary>("/v1/mobile/summary"),
+  // The server's "today" is the handset's today, not UTC's.
+  summary: () =>
+    request<DaySummary>(
+      `/v1/mobile/summary?tz_offset_minutes=${-new Date().getTimezoneOffset()}`,
+    ),
 
   unpair: () => request<{ ok: boolean }>("/v1/mobile/unpair", { method: "POST" }),
 

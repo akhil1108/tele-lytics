@@ -7,7 +7,7 @@ agent, so a compromised handset cannot write into someone else's call history.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy import case, func, select
@@ -18,6 +18,7 @@ from app.core.deps import DevicePrincipal, get_current_device
 from app.core.errors import BadRequest, Conflict, NotFound, PayloadTooLarge
 from app.db.enums import (
     CallDirection,
+    CallStatus,
     ProcessingStage,
     RecordingStatus,
 )
@@ -262,21 +263,18 @@ async def my_calls(
     return [CallOut.model_validate(row) for row in rows]
 
 
-@router.get("/summary")
-async def my_summary(
-    principal: DevicePrincipal = Depends(get_current_device),
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Today's figures for the agent's own home screen."""
-    day_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-
+async def _period_stats(session: AsyncSession, agent_id: str, since: datetime) -> dict:
+    """Call counts for one window, split the way an agent thinks about their day."""
     totals = (
         await session.execute(
             select(
                 func.count(Call.id),
+                func.sum(case((Call.direction == CallDirection.INBOUND, 1), else_=0)),
+                func.sum(case((Call.direction == CallDirection.OUTBOUND, 1), else_=0)),
+                func.sum(case((Call.status == CallStatus.MISSED, 1), else_=0)),
                 func.sum(func.coalesce(Call.duration_seconds, 0)),
                 func.sum(case((Call.has_recording.is_(True), 1), else_=0)),
-            ).where(Call.agent_id == principal.agent.id, Call.started_at >= day_start)
+            ).where(Call.agent_id == agent_id, Call.started_at >= since)
         )
     ).one()
 
@@ -284,14 +282,51 @@ async def my_summary(
         await session.execute(
             select(func.avg(Analysis.sentiment_score))
             .join(Call, Call.id == Analysis.call_id)
-            .where(Call.agent_id == principal.agent.id, Call.started_at >= day_start)
+            .where(Call.agent_id == agent_id, Call.started_at >= since)
         )
     ).scalar_one_or_none()
+
+    calls, inbound, outbound, missed, talk, recorded = (int(v or 0) for v in totals)
+    answered = calls - missed
+    return {
+        "calls": calls,
+        "inbound": inbound,
+        "outbound": outbound,
+        "missed": missed,
+        "talk_seconds": talk,
+        "recorded": recorded,
+        # Missed calls have no talk time; folding them in would drag the average
+        # down as missed-call reporting gets more complete.
+        "avg_call_seconds": round(talk / answered) if answered else None,
+        "avg_sentiment": round(float(sentiment), 3) if sentiment is not None else None,
+    }
+
+
+@router.get("/summary")
+async def my_summary(
+    tz_offset_minutes: int = Query(
+        default=0,
+        ge=-14 * 60,
+        le=14 * 60,
+        description="The handset's offset from UTC, so 'today' is the agent's today",
+    ),
+    principal: DevicePrincipal = Depends(get_current_device),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Today's and this week's figures for the agent's own home screen."""
+    offset = timedelta(minutes=tz_offset_minutes)
+    local_now = datetime.now(UTC) + offset
+    day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0) - offset
+    week_start = day_start - timedelta(days=6)
+
+    agent_id = principal.agent.id
+    today = await _period_stats(session, agent_id, day_start)
+    week = await _period_stats(session, agent_id, week_start)
 
     pending = (
         await session.execute(
             select(func.count(Call.id)).where(
-                Call.agent_id == principal.agent.id,
+                Call.agent_id == agent_id,
                 Call.recording_expected.is_(True),
                 Call.has_recording.is_(False),
             )
@@ -299,14 +334,16 @@ async def my_summary(
     ).scalar_one()
 
     return {
-        "agent_id": principal.agent.id,
+        "agent_id": agent_id,
         "agent_name": principal.agent.display_name,
         "status": principal.agent.status,
-        "calls_today": int(totals[0] or 0),
-        "talk_seconds_today": int(totals[1] or 0),
-        "recorded_today": int(totals[2] or 0),
-        "avg_sentiment_today": round(float(sentiment), 3) if sentiment is not None else None,
+        "calls_today": today["calls"],
+        "talk_seconds_today": today["talk_seconds"],
+        "recorded_today": today["recorded"],
+        "avg_sentiment_today": today["avg_sentiment"],
         "uploads_outstanding": int(pending or 0),
+        "today": today,
+        "week": week,
     }
 
 

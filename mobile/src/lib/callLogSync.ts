@@ -1,4 +1,5 @@
 import type { CallLogEntry, CallLogType } from "../../modules/call-log";
+import { isUntracked, type NameSource } from "./callInsights";
 import type { ParsedRecording } from "./callRecordings";
 
 /**
@@ -34,6 +35,8 @@ export interface CallLogCall {
   status: SyncStatus;
   /** The original call-log type, kept for the audit trail. */
   logType: CallLogType;
+  /** The dialler's caller-ID name for the number, when it had one. */
+  cachedName: string | null;
 }
 
 /** Call-log types that represent a real call worth reporting. */
@@ -76,6 +79,7 @@ export function toCall(entry: CallLogEntry): CallLogCall {
     direction: directionFor(entry.type),
     status: entry.type === "missed" ? "missed" : "completed",
     logType: entry.type,
+    cachedName: entry.name?.trim() || null,
   };
 }
 
@@ -83,8 +87,20 @@ export function toCall(entry: CallLogEntry): CallLogCall {
 export function prepareBatch(
   entries: CallLogEntry[],
   alreadySynced: ReadonlySet<string>,
-): { calls: CallLogCall[]; skippedUnreportable: number; skippedNoNumber: number } {
+  untracked: ReadonlySet<string> = new Set(),
+): {
+  calls: CallLogCall[];
+  skippedUnreportable: number;
+  skippedNoNumber: number;
+  /**
+   * Log ids of calls with numbers the agent chose not to track. The caller
+   * adds them to the ledger so they stay unreported even if the number is
+   * tracked again later — un-hiding a number is not consent to back-fill.
+   */
+  untrackedIds: string[];
+} {
   const calls: CallLogCall[] = [];
+  const untrackedIds: string[] = [];
   let skippedUnreportable = 0;
   let skippedNoNumber = 0;
 
@@ -98,11 +114,15 @@ export function prepareBatch(
       skippedNoNumber += 1;
       continue;
     }
+    if (isUntracked(entry.number, untracked)) {
+      untrackedIds.push(entry.id);
+      continue;
+    }
     calls.push(toCall(entry));
   }
 
   calls.sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
-  return { calls, skippedUnreportable, skippedNoNumber };
+  return { calls, skippedUnreportable, skippedNoNumber, untrackedIds };
 }
 
 // ------------------------------------------------------- matching recordings
@@ -219,12 +239,15 @@ export function callPayload(
     hasRecording: boolean;
     deviceCanRecord: boolean;
     originalFilename?: string;
+    customerName?: string | null;
+    nameSource?: NameSource | null;
   },
 ): Record<string, unknown> {
   return {
     external_ref: `log-${options.deviceId.replace(/-/g, "").slice(0, 8)}-${call.logId}`,
     direction: call.direction,
     customer_number: call.number,
+    customer_name: options.customerName?.slice(0, 160) || null,
     started_at: call.startedAt.toISOString(),
     ended_at: call.endedAt?.toISOString() ?? null,
     duration_seconds: call.durationSeconds,
@@ -237,6 +260,7 @@ export function callPayload(
       source: options.hasRecording ? "call_log_with_recording" : "call_log_only",
       call_log_type: call.logType,
       direction_source: "call_log",
+      ...(options.customerName && options.nameSource ? { name_source: options.nameSource } : {}),
       ...(options.originalFilename ? { original_filename: options.originalFilename } : {}),
     },
   };

@@ -10,8 +10,11 @@ import {
   prepareBatch,
   type CallLogCall,
 } from "./callLogSync";
+import { resolveName } from "./callInsights";
 import { importRefFor, mimeTypeFor } from "./callRecordings";
+import { contactIndex } from "./contacts";
 import { markImported, recordingFolder, scanRecordingFolder } from "./importer";
+import { untrackedNumbers } from "./untracked";
 import { uploadQueue } from "./uploadQueue";
 
 /**
@@ -43,6 +46,8 @@ export interface SyncReport {
   metadataOnly: number;
   skippedUnreportable: number;
   skippedNoNumber: number;
+  /** Calls with numbers the agent marked "don't track". Never reported. */
+  skippedUntracked: number;
   refusedByPolicy: number;
   failed: number;
   errors: string[];
@@ -131,6 +136,7 @@ export async function syncCallLog(deviceId: string): Promise<SyncReport> {
     metadataOnly: 0,
     skippedUnreportable: 0,
     skippedNoNumber: 0,
+    skippedUntracked: 0,
     refusedByPolicy: 0,
     failed: 0,
     errors: [],
@@ -146,9 +152,13 @@ export async function syncCallLog(deviceId: string): Promise<SyncReport> {
   if (entries.length === 0) return report;
 
   const synced = await readSynced();
-  const batch = prepareBatch(entries, synced);
+  const batch = prepareBatch(entries, synced, await untrackedNumbers.keys());
   report.skippedUnreportable = batch.skippedUnreportable;
   report.skippedNoNumber = batch.skippedNoNumber;
+  report.skippedUntracked = batch.untrackedIds.length;
+  for (const id of batch.untrackedIds) synced.add(id);
+
+  const contacts = await contactIndex();
 
   // Recordings are optional. Without a folder every call is metadata-only,
   // which is exactly the intended behaviour on a phone that cannot record.
@@ -172,6 +182,7 @@ export async function syncCallLog(deviceId: string): Promise<SyncReport> {
   for (const pair of matched) {
     const ok = await reportCall(pair.call, {
       deviceId,
+      contacts,
       deviceCanRecord: folderConfigured,
       recording: pair.recording,
       report,
@@ -185,6 +196,7 @@ export async function syncCallLog(deviceId: string): Promise<SyncReport> {
   for (const call of unmatchedCalls) {
     const ok = await reportCall(call, {
       deviceId,
+      contacts,
       deviceCanRecord: folderConfigured,
       recording: null,
       report,
@@ -213,6 +225,7 @@ async function reportCall(
   call: CallLogCall,
   options: {
     deviceId: string;
+    contacts: ReadonlyMap<string, string>;
     deviceCanRecord: boolean;
     recording: RecordingCandidate | null;
     report: SyncReport;
@@ -231,9 +244,12 @@ async function reportCall(
       if (!mayUploadAudio) report.refusedByPolicy += 1;
     }
 
+    const caller = resolveName(call.number, options.contacts, call.cachedName);
     const created = await api.logCall(
       callPayload(call, {
         deviceId: options.deviceId,
+        customerName: caller.name,
+        nameSource: caller.source,
         hasRecording: Boolean(options.recording) && mayUploadAudio,
         deviceCanRecord: options.deviceCanRecord,
         originalFilename: options.recording?.fileName,

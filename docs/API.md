@@ -155,7 +155,7 @@ All require a device token and act on the one agent it is bound to.
 | `POST` | `/v1/mobile/calls` | Log a call. Idempotent on `external_ref` |
 | `POST` | `/v1/mobile/calls/{id}/recording` | `multipart/form-data`. Starts the pipeline |
 | `GET`  | `/v1/mobile/calls` | This agent's recent calls |
-| `GET`  | `/v1/mobile/summary` | Today's figures for the home screen |
+| `GET`  | `/v1/mobile/summary` | Today's and the last 7 days' figures for the home screen — calls, incoming, outgoing, missed, talk time, recorded, average call, sentiment. `?tz_offset_minutes=330` makes "today" the handset's day |
 | `POST` | `/v1/mobile/unpair` | Agent-initiated revoke (lost or swapped phone) |
 
 ### Upload

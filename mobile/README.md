@@ -21,16 +21,50 @@ npx expo run:android
 npx expo run:ios
 ```
 
-## Screens
+## What the agent sees
 
-| Route      | What it does                                                     |
-| ---------- | ---------------------------------------------------------------- |
-| `/pair`    | Exchange a one-time code for a device token                      |
-| `/`        | Status toggle, today's figures, import backlog, upload badge     |
-| `/tracking`| **Primary on Android** — call-log sync + optional recordings     |
-| `/call`    | Fallback — in-app recording: policy → consent → record → queue   |
-| `/uploads` | The upload queue, with per-item retry                            |
-| `/settings`| Folder, permissions, server, unpair                              |
+Three tabs, plus a one-time setup screen.
+
+| Route          | What it does                                                             |
+| -------------- | ------------------------------------------------------------------------ |
+| `/pair`        | Exchange a one-time code for a device token                              |
+| `/permissions` | Setup: call log, contacts, notifications, microphone and the recordings folder, with one **Allow all** button. Shown straight after pairing |
+| `/` (Home)     | Status toggle, **Today / Last 7 days** stats, missed calls to return, uploads |
+| `/calls`       | Missed calls still to call back, then the last 7 days of calls with caller names. Tap a call to call back or mark the number **don't track** |
+| `/settings`    | Permissions, numbers you don't track, reporting counts, server, unpair   |
+| `/call`        | Fallback — in-app recording: policy → consent → record → queue           |
+| `/uploads`     | The upload queue, with per-item retry                                    |
+
+### Caller names
+
+Each call shows a name when one is known. The agent's own contact wins; after
+that, the name the dialler cached in the call log. That second source is where
+a caller-ID app leaves its lookup — **Truecaller writes it there when it is set
+as the phone's default dialler**. Truecaller has no public API an app like this
+may call, so that is the only route to its names. The name is sent with the
+call so the dashboard shows it too; the address book itself stays on the phone.
+
+### Numbers you don't track
+
+Any number can be marked **don't track** from the Calls tab — a family member,
+a personal line. Calls with it are never reported and their recordings never
+leave the phone. The list lives only on the handset. Calls already reported
+before the number was marked stay in the dashboard, and marking a number
+tracked again does not back-fill the calls made while it was untracked.
+
+### Missed-call follow-up
+
+A missed call stays on the **To call back** list until a later call with that
+number connects, in either direction. An unanswered call back is shown as an
+attempt but does not clear it. **Done** clears it by hand (e.g. handled on
+WhatsApp); a new missed call from the same number reopens it. A fresh missed
+call also raises a notification.
+
+### Background sync
+
+Call reporting, missed-call reminders and uploads run every ~15 minutes in the
+background (Android's minimum), after a reboot too, as well as on every
+pull-to-refresh.
 
 ## The Android flow
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -253,3 +255,64 @@ async def test_agent_home_summary(
     assert body["recorded_today"] == 1
     assert body["talk_seconds_today"] > 0
     assert body["agent_name"] == "Priya Sharma"
+
+
+async def test_agent_home_summary_breaks_down_today_and_the_week(
+    client: AsyncClient, device_headers: dict
+) -> None:
+    now = datetime.now(UTC)
+    calls = [
+        # Answered inbound call today, 4 minutes long.
+        call_payload(
+            external_ref="today-answered",
+            started_at=(now - timedelta(minutes=5)).isoformat(),
+            ended_at=(now - timedelta(minutes=1)).isoformat(),
+            recording_expected=False,
+        ),
+        # Missed inbound call today.
+        call_payload(
+            external_ref="today-missed",
+            status="missed",
+            started_at=(now - timedelta(minutes=2)).isoformat(),
+            ended_at=None,
+            duration_seconds=0,
+            recording_expected=False,
+        ),
+        # Outbound call earlier this week.
+        call_payload(
+            external_ref="earlier-outbound",
+            direction="outbound",
+            started_at=(now - timedelta(days=3)).isoformat(),
+            ended_at=(now - timedelta(days=3) + timedelta(seconds=90)).isoformat(),
+            recording_expected=False,
+        ),
+    ]
+    for body in calls:
+        response = await client.post("/v1/mobile/calls", headers=device_headers, json=body)
+        assert response.status_code == 201
+
+    response = await client.get("/v1/mobile/summary", headers=device_headers)
+    assert response.status_code == 200
+    body = response.json()
+
+    today = body["today"]
+    assert today["calls"] == 2
+    assert today["inbound"] == 2
+    assert today["missed"] == 1
+    # The missed call does not drag the average down.
+    assert today["avg_call_seconds"] == 240
+    assert body["calls_today"] == today["calls"]
+
+    week = body["week"]
+    assert week["calls"] == 3
+    assert week["outbound"] == 1
+    assert week["talk_seconds"] == 240 + 90
+
+
+async def test_agent_home_summary_rejects_an_impossible_offset(
+    client: AsyncClient, device_headers: dict
+) -> None:
+    response = await client.get(
+        "/v1/mobile/summary?tz_offset_minutes=5000", headers=device_headers
+    )
+    assert response.status_code == 422
