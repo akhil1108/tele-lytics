@@ -1,38 +1,39 @@
-import { useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, Platform, ScrollView, Text, View } from "react-native";
 
 import { Button, Card, Note, Row, Screen, useTheme } from "@/components/ui";
 import { API_BASE_URL } from "@/lib/config";
-import {
-  hasPermission as hasCallLogPermission,
-  isSupported as callLogSupported,
-  resetSyncState,
-  syncedCount,
-} from "@/lib/callLogService";
-import { importedCount, recordingFolder, resetLedger } from "@/lib/importer";
-import { CallRecorder } from "@/lib/recorder";
+import { resetSyncState, syncedCount } from "@/lib/callLogService";
+import { importedCount, resetLedger } from "@/lib/importer";
+import { permissionStatus, type PermissionState } from "@/lib/permissions";
 import { useSession } from "@/lib/session";
 import { STATUS_LABEL } from "@/lib/theme";
+import { untrackedNumbers, type UntrackedNumber } from "@/lib/untracked";
 import { uploadQueue } from "@/lib/uploadQueue";
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { session, status, unpair } = useSession();
-  const [micGranted, setMicGranted] = useState<boolean | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
-  const [folder, setFolder] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<PermissionState[]>([]);
+  const [untracked, setUntracked] = useState<UntrackedNumber[]>([]);
   const [imported, setImported] = useState(0);
   const [reported, setReported] = useState(0);
-  const [logGranted, setLogGranted] = useState(false);
 
-  useEffect(() => {
-    void CallRecorder.hasPermission().then(setMicGranted);
-    void recordingFolder.get().then(setFolder);
-    void importedCount().then(setImported);
-    void syncedCount().then(setReported);
-    setLogGranted(callLogSupported() && hasCallLogPermission());
-    return uploadQueue.subscribe((queue) => setPendingCount(queue.length));
-  }, []);
+  useEffect(() => uploadQueue.subscribe((queue) => setPendingCount(queue.length)), []);
+  useEffect(() => untrackedNumbers.subscribe(setUntracked), []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void permissionStatus().then(setPermissions);
+      void importedCount().then(setImported);
+      void syncedCount().then(setReported);
+    }, []),
+  );
+
+  const allowed = permissions.filter((item) => item.granted).length;
 
   function confirmForgetImports() {
     Alert.alert(
@@ -78,37 +79,65 @@ export default function SettingsScreen() {
           <Row label="Number" value={session?.agent_number ?? "—"} />
           <Row label="Organisation" value={session?.organization_name ?? "—"} />
           <Row label="Status" value={STATUS_LABEL[status] ?? status} />
-          <Row label="Uploads waiting" value={String(pendingCount)} />
         </Card>
 
-        <Card style={{ marginTop: 16 }} title="Permissions">
-          <Row
-            label="Microphone"
-            value={micGranted === null ? "…" : micGranted ? "Granted" : "Not granted"}
-            valueColor={micGranted === false ? theme.critical : undefined}
-          />
-          {micGranted === false && (
-            <Button
-              label="Grant microphone access"
-              onPress={() => void CallRecorder.requestPermission().then(setMicGranted)}
-              style={{ marginTop: 12 }}
+        <Card
+          style={{ marginTop: 16 }}
+          title="Permissions"
+          subtitle={`${allowed} of ${permissions.length} allowed`}
+        >
+          {permissions.map((item) => (
+            <Row
+              key={item.id}
+              label={item.title}
+              value={item.granted ? "Allowed" : item.optional ? "Not set" : "Not allowed"}
+              valueColor={item.granted ? theme.good : item.optional ? undefined : theme.critical}
             />
+          ))}
+          <Button
+            label="Manage permissions"
+            onPress={() => router.push("/permissions")}
+            style={{ marginTop: 12 }}
+          />
+        </Card>
+
+        <Card
+          style={{ marginTop: 16 }}
+          title="Numbers you don't track"
+          subtitle="Calls with these numbers are never reported. Mark a number from the Calls tab."
+        >
+          {untracked.length === 0 ? (
+            <Note>None — every number is tracked.</Note>
+          ) : (
+            untracked.map((entry) => (
+              <View
+                key={entry.key}
+                style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6, gap: 12 }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.ink, fontSize: 14, fontWeight: "600" }}>
+                    {entry.name ?? entry.number}
+                  </Text>
+                  {entry.name && (
+                    <Text style={{ color: theme.inkMuted, fontSize: 12 }}>{entry.number}</Text>
+                  )}
+                </View>
+                <Button
+                  label="Track again"
+                  onPress={() => void untrackedNumbers.remove(entry.number)}
+                  style={{ paddingVertical: 8, paddingHorizontal: 12 }}
+                />
+              </View>
+            ))
           )}
         </Card>
 
         {Platform.OS === "android" && (
-          <Card style={{ marginTop: 16 }} title="Call tracking">
-            <Row
-              label="Call log access"
-              value={logGranted ? "Granted" : "Not granted"}
-              valueColor={logGranted ? undefined : theme.warning}
-            />
+          <Card style={{ marginTop: 16 }} title="Reporting">
             <Row label="Calls reported" value={String(reported)} />
-            <Row
-              label="Recordings folder"
-              value={folder ? (decodeURIComponent(folder).split(":").pop() ?? "Set") : "Not set"}
-            />
             <Row label="Recordings uploaded" value={String(imported)} />
+            <Row label="Uploads waiting" value={String(pendingCount)} />
+            <Note>Syncs automatically about every 15 minutes, even with the app closed.</Note>
             {(imported > 0 || reported > 0) && (
               <Button
                 label="Report everything again"
@@ -118,20 +147,6 @@ export default function SettingsScreen() {
             )}
           </Card>
         )}
-
-        <Card style={{ marginTop: 16 }} title="How recording works">
-          <Note>
-            Neither Android nor iOS lets an app record the carrier call itself — that
-            needs a system-level permission Google and Apple do not grant to normal
-            apps.
-            {"\n\n"}
-            On Android this app reports every call from your call log — the number,
-            when it happened and how long it lasted — whether or not there was a
-            recording. If your phone&apos;s dialler saves recordings, pointing the app at
-            that folder adds transcripts and analysis on top. In-app recording captures
-            the microphone instead, so put the call on speaker if you use it.
-          </Note>
-        </Card>
 
         <Card style={{ marginTop: 16 }} title="Server">
           <Text style={{ color: theme.inkSecondary, fontSize: 13 }}>{API_BASE_URL}</Text>

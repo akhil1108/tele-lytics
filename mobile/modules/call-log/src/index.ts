@@ -27,6 +27,11 @@ export interface CallLogEntry {
   /** Connected seconds. Zero for missed, rejected and blocked calls. */
   durationSeconds: number;
   type: CallLogType;
+  /**
+   * The name the dialler showed: a saved contact, or a caller-ID app's lookup
+   * (Truecaller fills this when it is the default dialler). Null when unknown.
+   */
+  name?: string | null;
 }
 
 interface CallLogNativeModule {

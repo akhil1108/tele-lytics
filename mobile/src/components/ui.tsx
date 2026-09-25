@@ -194,3 +194,92 @@ export function Loading({ label }: { label?: string }) {
     </View>
   );
 }
+
+/** A single figure with its label — the home screen's stat grid. */
+export function StatTile({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        flexBasis: "47%",
+        flexGrow: 1,
+        backgroundColor: theme.surfaceRaised,
+        borderColor: theme.border,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+      }}
+    >
+      <Text style={{ color: theme.inkMuted, fontSize: 12 }}>{label}</Text>
+      <Text
+        style={{ color: valueColor ?? theme.ink, fontSize: 22, fontWeight: "700", marginTop: 4 }}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/** Two or three mutually exclusive options, e.g. Today / This week. */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        backgroundColor: theme.surfaceRaised,
+        borderColor: theme.border,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 10,
+        padding: 3,
+      }}
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            onPress={() => onChange(option.value)}
+            style={{
+              flex: 1,
+              alignItems: "center",
+              paddingVertical: 8,
+              borderRadius: 8,
+              backgroundColor: active ? theme.accent : "transparent",
+            }}
+          >
+            <Text
+              style={{
+                color: active ? theme.onAccent : theme.inkSecondary,
+                fontSize: 13,
+                fontWeight: "600",
+              }}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}

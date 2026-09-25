@@ -47,6 +47,18 @@ export interface Call {
   has_recording: boolean;
 }
 
+/** One window of the agent's own figures, as `/v1/mobile/summary` returns it. */
+export interface PeriodStats {
+  calls: number;
+  inbound: number;
+  outbound: number;
+  missed: number;
+  talk_seconds: number;
+  recorded: number;
+  avg_call_seconds: number | null;
+  avg_sentiment: number | null;
+}
+
 export interface DaySummary {
   agent_id: string;
   agent_name: string;
@@ -56,6 +68,9 @@ export interface DaySummary {
   recorded_today: number;
   avg_sentiment_today: number | null;
   uploads_outstanding: number;
+  today: PeriodStats;
+  /** Today plus the six days before it. */
+  week: PeriodStats;
 }
 
 /** A recording waiting to be uploaded. Persisted, so it survives a restart. */

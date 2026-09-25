@@ -16,7 +16,8 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "The app records your work calls so they can be transcribed and analysed for quality. Recording only happens on numbers your administrator has enabled, and only after the consent announcement.",
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "fetch"
         ]
       }
     },
@@ -25,11 +26,19 @@
       "permissions": [
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_AUDIO",
         "READ_CALL_LOG",
+        "READ_CONTACTS",
+        "POST_NOTIFICATIONS",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_MICROPHONE"
+      ],
+      "blockedPermissions": [
+        "android.permission.WRITE_CONTACTS"
       ]
     },
     "plugins": [
@@ -38,6 +47,18 @@
         "expo-av",
         {
           "microphonePermission": "The app records your work calls so they can be transcribed and analysed for quality."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Shows the name of the person on each call. Your address book stays on this phone."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2a78d6"
         }
       ]
     ],

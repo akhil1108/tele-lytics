@@ -13,6 +13,7 @@ import {
 import { Platform } from "react-native";
 
 import { ApiError, api, credentials } from "./api";
+import { registerBackgroundSync, unregisterBackgroundSync } from "./autoSync";
 import { startQueueWatcher, uploadQueue } from "./uploadQueue";
 import type { AgentStatus, DeviceSession } from "./types";
 
@@ -46,6 +47,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
       setSession(stored);
+      void registerBackgroundSync();
 
       // Confirm the pairing is still good. An admin may have revoked this
       // handset, and finding that out now beats finding out mid-call.
@@ -83,7 +85,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await credentials.save(paired);
       setSession(paired);
       setLocalStatus("offline");
-      router.replace("/");
+      void registerBackgroundSync();
+      // Straight into setup: without permissions there is nothing to report.
+      router.replace("/permissions");
     },
     [router],
   );
@@ -106,6 +110,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {
       /* unpair locally even if the server cannot be reached */
     }
+    await unregisterBackgroundSync();
     await credentials.clear();
     setSession(null);
     setLocalStatus("offline");

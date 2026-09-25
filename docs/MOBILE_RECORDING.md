@@ -235,7 +235,9 @@ not needs no special casing.
 | `mobile/src/lib/callLogService.ts` | Sync orchestration, ledger, cursor |
 | `mobile/src/lib/callRecordings.ts` | Filename parsing — pure and tested |
 | `mobile/src/lib/importer.ts` | SAF folder access and scanning |
-| `mobile/app/tracking.tsx` | The two-step setup screen |
+| `mobile/src/lib/callInsights.ts` | Caller names, untracked numbers, missed-call follow-ups — pure and tested |
+| `mobile/src/lib/autoSync.ts` | The sync pass, run on refresh and as a background task |
+| `mobile/app/permissions.tsx` | The setup screen: every permission plus the recordings folder |
 
 `npm test` in `mobile/` covers the parsing and matching rules. They run in plain
 Node, which is how a handset nobody owns still gets its filename format tested.
