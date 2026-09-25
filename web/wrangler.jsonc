@@ -8,8 +8,12 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  // NEXT_PUBLIC_* vars are inlined into the client bundle at build time by
+  // Next.js itself (web/.env.production), not read from here at runtime —
+  // this entry exists for any server-side code path that reads process.env
+  // directly, and to keep the deployed value visible/auditable in one place.
   "vars": {
-    "NEXT_PUBLIC_API_BASE_URL": "https://api.tele-lytics.example.com"
+    "NEXT_PUBLIC_API_BASE_URL": "https://tele-lytics-api.mathakhilesh.workers.dev"
   },
   "observability": {
     "enabled": true

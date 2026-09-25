@@ -28,6 +28,11 @@ interface Env {
   AWS_ACCESS_KEY_ID: string;
   AWS_SECRET_ACCESS_KEY: string;
   APP_ENV: string;
+  ANALYSIS_PROVIDER: string;
+  WORKERS_AI_ACCOUNT_ID: string;
+  WORKERS_AI_API_TOKEN: string;
+  WORKERS_AI_MODEL: string;
+  CORS_ORIGINS: string;
 }
 
 const TICK_INTERVAL_MS = 30_000;
@@ -59,6 +64,11 @@ export class Backend extends Container<Env> {
       AWS_ACCESS_KEY_ID: env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: env.AWS_SECRET_ACCESS_KEY,
       APP_ENV: env.APP_ENV,
+      ANALYSIS_PROVIDER: env.ANALYSIS_PROVIDER,
+      WORKERS_AI_ACCOUNT_ID: env.WORKERS_AI_ACCOUNT_ID,
+      WORKERS_AI_API_TOKEN: env.WORKERS_AI_API_TOKEN,
+      WORKERS_AI_MODEL: env.WORKERS_AI_MODEL,
+      CORS_ORIGINS: env.CORS_ORIGINS,
     };
 
     // Async work can't happen directly in a constructor — block the DO's

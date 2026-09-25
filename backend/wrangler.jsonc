@@ -16,7 +16,11 @@
     "S3_BUCKET": "tele-lytics-recordings",
     "S3_REGION": "auto",
     "S3_ENDPOINT_URL": "https://2e5f25c9cc7e9c3ecf42b7810e64108d.r2.cloudflarestorage.com",
-    "APP_ENV": "production"
+    "APP_ENV": "production",
+    "ANALYSIS_PROVIDER": "workers_ai",
+    "WORKERS_AI_ACCOUNT_ID": "2e5f25c9cc7e9c3ecf42b7810e64108d",
+    "WORKERS_AI_MODEL": "@cf/ibm-granite/granite-4.0-h-micro",
+    "CORS_ORIGINS": "https://tele-lytics-web.mathakhilesh.workers.dev"
   },
   "containers": [
     {
