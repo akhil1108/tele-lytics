@@ -54,11 +54,22 @@ class Settings(BaseSettings):
     stt_returns_tone: bool = True
 
     # ---- Analysis LLM ----
-    analysis_provider: Literal["claude", "mock"] = "mock"
+    analysis_provider: Literal["claude", "mock", "workers_ai"] = "mock"
     anthropic_api_key: str | None = None
     analysis_model: str = "claude-opus-5"
     analysis_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
     analysis_max_tokens: int = 16000
+
+    # Cloudflare Workers AI — lightweight, self-hosted-in-Cloudflare
+    # alternative to Claude. Reached via Workers AI's OpenAI-compatible
+    # endpoint, wrapped with Instructor for validate-and-retry structured
+    # output (Cloudflare doesn't guarantee schema conformance on its own).
+    workers_ai_account_id: str | None = None
+    workers_ai_api_token: str | None = None
+    workers_ai_model: str = "@cf/ibm-granite/granite-4.0-h-micro"
+    workers_ai_max_tokens: int = 16000
+    workers_ai_max_retries: int = 2
+    workers_ai_timeout_seconds: int = 300
 
     # ---- Worker ----
     worker_poll_interval_seconds: float = 2.0
