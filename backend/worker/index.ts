@@ -33,6 +33,10 @@ interface Env {
   WORKERS_AI_API_TOKEN: string;
   WORKERS_AI_MODEL: string;
   CORS_ORIGINS: string;
+  STT_PROVIDER: string;
+  STT_ENDPOINT_URL: string;
+  STT_API_KEY: string;
+  STT_MODEL: string;
 }
 
 const TICK_INTERVAL_MS = 30_000;
@@ -69,6 +73,10 @@ export class Backend extends Container<Env> {
       WORKERS_AI_API_TOKEN: env.WORKERS_AI_API_TOKEN,
       WORKERS_AI_MODEL: env.WORKERS_AI_MODEL,
       CORS_ORIGINS: env.CORS_ORIGINS,
+      STT_PROVIDER: env.STT_PROVIDER,
+      STT_ENDPOINT_URL: env.STT_ENDPOINT_URL,
+      STT_API_KEY: env.STT_API_KEY,
+      STT_MODEL: env.STT_MODEL,
     };
 
     // Async work can't happen directly in a constructor — block the DO's

@@ -20,7 +20,10 @@
     "ANALYSIS_PROVIDER": "workers_ai",
     "WORKERS_AI_ACCOUNT_ID": "2e5f25c9cc7e9c3ecf42b7810e64108d",
     "WORKERS_AI_MODEL": "@cf/ibm-granite/granite-4.0-h-micro",
-    "CORS_ORIGINS": "https://tele-lytics-web.mathakhilesh.workers.dev"
+    "CORS_ORIGINS": "https://tele-lytics-web.mathakhilesh.workers.dev",
+    "STT_PROVIDER": "shared_model",
+    "STT_ENDPOINT_URL": "https://akhilesh1108-tele-lytics-whisper.hf.space/transcribe",
+    "STT_MODEL": "openai/whisper-large-v3"
   },
   "containers": [
     {
