@@ -8,7 +8,7 @@ Four models, one HTTP endpoint:
 
 | Job | Model | Why |
 | --- | --- | --- |
-| Transcription | [`openai/whisper-large-v3-turbo`](https://huggingface.co/openai/whisper-large-v3-turbo) | 99-language coverage (matters for `en-IN` code-switching), ~8x faster decode than large-v3 for a small accuracy tradeoff |
+| Transcription | [`openai/whisper-large-v3`](https://huggingface.co/openai/whisper-large-v3) | 99-language coverage (matters for `en-IN` code-switching); full model rather than `-turbo`, trading `-turbo`'s ~8x decode speed for the accuracy that costs. Per-language checkpoint overrides are supported via `WHISPER_MODEL_OVERRIDES` — e.g. [`ARTPARK-IISc/whisper-medium-vaani-kannada`](https://huggingface.co/ARTPARK-IISc/whisper-medium-vaani-kannada), IISc/ARTPARK's Whisper fine-tuned on Indian speech per-language, for calls hinted as Kannada. Each override is a full extra model kept resident — see `config.py`. |
 | Speaker diarisation | [`pyannote/speaker-diarization-3.1`](https://huggingface.co/pyannote/speaker-diarization-3.1) | Whisper alone has no speaker concept; call recordings are mono, so this is what tells agent from customer |
 | Tone | [`superb/wav2vec2-base-superb-er`](https://huggingface.co/superb/wav2vec2-base-superb-er) | Discrete label + confidence maps directly onto `tone.label` — the field the transcript view actually renders. (An earlier pick, `ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition`, silently fails to load its classifier head via `AutoModelForAudioClassification` — the checkpoint's weight names don't match the standard head, so it scores on randomly-initialised weights. Watch the startup log for "weights ... newly initialized" if you swap emotion models — that warning means the same failure.) |
 | Non-English → English translation | OpenAI's hosted Whisper (`whisper-1`, via `client.audio.translations.create`) | Runs whenever `metadata.language` isn't English, and *replaces* local transcription for that call rather than running after it. Deliberately not a local model: our local Whisper romanizes code-switched Indian-language speech (Latin script, e.g. "agi dhe" rather than ಆಗಿದೆ), and every local text-translation model tried expects native script as input — they silently no-op on romanized text instead of translating it. One call over the whole recording, not per segment: an earlier per-segment version lost cross-segment context, and short/ambiguous clips translated worse than local Whisper's own same-language read of them. `response_format="verbose_json"` gives back real per-segment timestamps *and* an `avg_logprob`-derived confidence in the same call — solving two problems (translation quality, missing ASR confidence) at once. Falls back to local transcription if the API is unreachable or `OPENAI_API_KEY` isn't set, so a call still gets *a* transcript either way. |
@@ -53,7 +53,7 @@ Then, in the main repo's `.env`:
 ```
 STT_PROVIDER=shared_model
 STT_ENDPOINT_URL=http://localhost:8001/transcribe
-STT_MODEL=openai/whisper-large-v3-turbo
+STT_MODEL=openai/whisper-large-v3
 ```
 
 ## Running in Docker
@@ -68,11 +68,13 @@ restarts — without it, every restart re-downloads ~3GB.
 
 ## Hardware
 
-CPU works but is slow — expect large-v3-turbo to run noticeably slower than
+CPU works but is slow — expect large-v3 to run noticeably slower than
 real-time on CPU alone, before diarisation and tone scoring are even added.
 For real call-centre volume, use:
 
-- **A CUDA GPU** (8GB+ VRAM comfortable for all three models) — set
+- **A CUDA GPU** (8GB+ VRAM comfortable for the three base models — large-v3,
+  diarisation, tone. Add ~1-3GB more per entry in `WHISPER_MODEL_OVERRIDES`,
+  each of which loads a full extra ASR model at startup) — set
   `torch`/`torchaudio` to a CUDA build per the comment in
   `requirements.txt`.
 - **Apple Silicon**, for local dev only — `DEVICE=mps` picks up the GPU via

@@ -41,18 +41,28 @@ DEVICE = _resolve_device()
 # --------------------------------------------------------------- ASR (stage 1a)
 
 
-@lru_cache(maxsize=1)
-def _asr_pipeline():
+@lru_cache(maxsize=4)
+def _asr_pipeline(model_id: str):
     from transformers import pipeline
 
     return pipeline(
         "automatic-speech-recognition",
-        model=settings.whisper_model,
+        model=model_id,
         torch_dtype=torch.float16 if DEVICE != "cpu" else torch.float32,
         device=DEVICE,
         chunk_length_s=30,
         return_timestamps=True,
     )
+
+
+def model_for_language(language: str | None) -> str:
+    """The whisper_model_overrides entry for this language, if any, else the
+    general-purpose default."""
+    if language:
+        override = settings.whisper_model_overrides.get(language.split("-")[0].lower())
+        if override:
+            return override
+    return settings.whisper_model
 
 
 @dataclass
@@ -74,7 +84,7 @@ def transcribe(wav_path: str, *, language: str | None, vocabulary: list[str]) ->
         # Whisper wants a bare language name/code, not a locale like "en-IN".
         generate_kwargs["language"] = language.split("-")[0]
 
-    asr = _asr_pipeline()
+    asr = _asr_pipeline(model_for_language(language))
     if vocabulary:
         # Best-effort vocabulary boost via an initial prompt. Silently skipped
         # on transformers versions where get_prompt_ids isn't available —
@@ -273,7 +283,9 @@ def slice_waveform(waveform: torch.Tensor, sample_rate: int, start_s: float, end
 
 def warm_up() -> None:
     """Load every model once at startup rather than on the first request."""
-    _asr_pipeline()
+    _asr_pipeline(settings.whisper_model)
+    for model_id in settings.whisper_model_overrides.values():
+        _asr_pipeline(model_id)
     if settings.hf_token:
         _diarization_pipeline()
     _emotion_model()

@@ -17,8 +17,19 @@ class Settings(BaseSettings):
 
     # ---- Models ----
     # A Hugging Face hub id, or a local path — e.g. the folder you `hf-mount`
-    # a fine-tuned checkpoint into.
-    whisper_model: str = "openai/whisper-large-v3-turbo"
+    # a fine-tuned checkpoint into. Full large-v3, not -turbo: turbo is a
+    # distilled variant that trades accuracy for ~8x speed, which isn't the
+    # right tradeoff once accuracy is the thing being optimised for.
+    whisper_model: str = "openai/whisper-large-v3"
+    # Per-language overrides, checked before falling back to whisper_model —
+    # e.g. a checkpoint fine-tuned on one language transcribes it better than
+    # a generalist model does. Keyed by bare language code (matches the
+    # `language.split("-")[0]` normalisation transcribe() already does), JSON
+    # on the wire: WHISPER_MODEL_OVERRIDES={"kn": "ARTPARK-IISc/whisper-medium-vaani-kannada"}
+    # Each override is a full extra model resident in memory (warm_up() loads
+    # it eagerly, same as the default) — budget GPU memory accordingly before
+    # adding more than one or two.
+    whisper_model_overrides: dict[str, str] = {}
     diarization_model: str = "pyannote/speaker-diarization-3.1"
     emotion_model: str = "superb/wav2vec2-base-superb-er"
 
