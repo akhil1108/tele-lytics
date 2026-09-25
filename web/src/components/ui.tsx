@@ -19,12 +19,12 @@ export function Card({
   return (
     <section
       className={clsx(
-        "rounded-card border border-hairline bg-surface p-5",
+        "rounded-card border border-hairline bg-surface p-6 shadow-soft transition-shadow duration-200 hover:shadow-soft-md",
         className,
       )}
     >
       {(title || actions) && (
-        <header className="mb-4 flex items-start justify-between gap-4">
+        <header className="mb-5 flex items-start justify-between gap-4">
           <div>
             {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
             {subtitle && (
@@ -50,23 +50,27 @@ export function StatTile({
   hint?: ReactNode;
   tone?: "default" | "good" | "warning" | "critical";
 }) {
-  const toneClass = {
-    default: "text-ink",
-    good: "text-[color:var(--success-text)]",
-    warning: "text-[color:var(--status-warning)]",
-    critical: "text-[color:var(--status-critical)]",
+  // Plain-text values get the tone's gradient treatment; a value that
+  // already carries its own inline colour (e.g. a sentiment score span)
+  // keeps that semantic colour instead — the gradient class has no effect
+  // on a descendant that sets its own `color`, which is what we want here.
+  const gradientClass = {
+    default: "text-gradient-default",
+    good: "text-gradient-good",
+    warning: "text-gradient-warning",
+    critical: "text-gradient-critical",
   }[tone];
 
   return (
-    <div className="rounded-card border border-hairline bg-surface px-4 py-3">
+    <div className="rounded-card border border-hairline bg-surface px-5 py-4 shadow-soft transition-shadow duration-200 hover:shadow-soft-md">
       <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
         {label}
       </p>
       {/* Hero figures keep proportional figures; only aligned columns go tabular. */}
-      <p className={clsx("mt-1.5 text-2xl font-semibold leading-none", toneClass)}>
+      <p className={clsx("mt-2 text-3xl font-semibold leading-none", gradientClass)}>
         {value}
       </p>
-      {hint && <p className="mt-1.5 text-xs text-ink-muted">{hint}</p>}
+      {hint && <p className="mt-2 text-xs text-ink-muted">{hint}</p>}
     </div>
   );
 }
@@ -112,17 +116,19 @@ export function Button({
   variant?: "primary" | "secondary" | "ghost" | "danger";
 }) {
   const styles = {
-    primary: "bg-accent text-white hover:opacity-90",
-    secondary: "border border-hairline bg-surface text-ink hover:bg-surface-raised",
+    primary:
+      "bg-gradient-to-br from-[color:var(--series-1)] to-[#1b5fb8] text-white shadow-soft hover:shadow-soft-md hover:brightness-105",
+    secondary:
+      "border border-hairline bg-surface text-ink shadow-soft hover:bg-surface-raised hover:shadow-soft-md",
     ghost: "text-ink-secondary hover:text-ink",
     danger:
-      "border border-hairline text-[color:var(--status-critical)] hover:bg-surface-raised",
+      "border border-hairline text-[color:var(--status-critical)] shadow-soft hover:bg-surface-raised hover:shadow-soft-md",
   }[variant];
 
   return (
     <button
       className={clsx(
-        "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-1.5 text-sm font-medium transition duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none",
         styles,
         className,
       )}

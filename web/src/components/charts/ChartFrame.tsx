@@ -31,8 +31,8 @@ export function ChartFrame({
   const [showTable, setShowTable] = useState(false);
 
   return (
-    <section className="rounded-card border border-hairline bg-surface p-5">
-      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section className="rounded-card border border-hairline bg-surface p-6 shadow-soft transition-shadow duration-200 hover:shadow-soft-md">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-ink">{title}</h2>
           {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}

@@ -95,7 +95,7 @@ export default function DashboardPage() {
         <>
           <section
             aria-label="Live floor"
-            className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4"
+            className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4"
           >
             <StatTile
               label="Agents on call"
@@ -126,7 +126,7 @@ export default function DashboardPage() {
 
           <section
             aria-label="Insight"
-            className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4"
+            className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4"
           >
             <StatTile
               label="Avg sentiment"
@@ -173,7 +173,7 @@ export default function DashboardPage() {
           </section>
 
           {(metrics.pipeline_failed > 0 || metrics.pipeline_queued > 0) && (
-            <div className="mb-6 flex flex-wrap items-center gap-3 rounded-card border border-hairline bg-surface px-4 py-3 text-sm">
+            <div className="mb-6 flex flex-wrap items-center gap-3 rounded-card border border-hairline bg-surface px-5 py-3.5 text-sm shadow-soft">
               <span className="font-medium text-ink">Processing</span>
               <Badge color={CHART.series1}>{count(metrics.pipeline_queued)} queued</Badge>
               <Badge color={CHART.series2}>{count(metrics.pipeline_running)} running</Badge>
@@ -191,17 +191,17 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="mb-4 grid gap-4 lg:grid-cols-2">
+          <div className="mb-5 grid gap-5 lg:grid-cols-2">
             {series.data && <CallVolumeChart data={series.data} bucket={bucket} />}
             {sentiment.data && <SentimentChart data={sentiment.data} />}
           </div>
 
-          <div className="mb-4 grid items-start gap-4 lg:grid-cols-2">
+          <div className="mb-5 grid items-start gap-5 lg:grid-cols-2">
             {series.data && <SentimentTrendChart data={series.data} bucket={bucket} />}
             {fillers.data && <FillerChart data={fillers.data} />}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-2">
             <Card
               title="Agents"
               subtitle="Busiest agents in this range"

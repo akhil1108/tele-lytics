@@ -138,3 +138,32 @@ body {
 .scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Gradient treatment for hero figures (StatTile values) — each tone
+   gradientizes its own existing token pair rather than introducing new,
+   off-palette colours, so the "colours declared once, referenced by role"
+   rule still holds. */
+.text-gradient-default {
+  background: linear-gradient(135deg, var(--text-primary), var(--series-1));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gradient-good {
+  background: linear-gradient(135deg, var(--status-good), var(--series-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gradient-warning {
+  background: linear-gradient(135deg, var(--status-warning), var(--status-serious));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gradient-critical {
+  background: linear-gradient(135deg, var(--status-critical), var(--sentiment-negative));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
