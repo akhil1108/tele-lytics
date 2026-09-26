@@ -1,0 +1,41 @@
+name: whisper-service
+
+on:
+  pull_request:
+    branches: [claude/call-analytics-software-or5nao]
+    paths: ["whisper_service/**"]
+  push:
+    branches: [claude/call-analytics-software-or5nao]
+    paths: ["whisper_service/**"]
+
+concurrency:
+  group: whisper-service-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # No GPU in CI and the pinned ML stack is multiple GB — a real install
+      # isn't practical per-PR. This only checks the files parse/import
+      # correctly, not that the models actually load.
+      - run: python -m py_compile whisper_service/config.py whisper_service/models.py whisper_service/main.py
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install huggingface_hub
+      - run: python .github/scripts/deploy_hf_space.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
