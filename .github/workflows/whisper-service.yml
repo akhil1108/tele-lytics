@@ -3,10 +3,10 @@ name: whisper-service
 on:
   pull_request:
     branches: [claude/call-analytics-software-or5nao]
-    paths: ["whisper_service/**"]
+    paths: ["whisper_service/**", ".github/workflows/whisper-service.yml", ".github/scripts/deploy_hf_space.py"]
   push:
     branches: [claude/call-analytics-software-or5nao]
-    paths: ["whisper_service/**"]
+    paths: ["whisper_service/**", ".github/workflows/whisper-service.yml", ".github/scripts/deploy_hf_space.py"]
 
 concurrency:
   group: whisper-service-${{ github.ref }}

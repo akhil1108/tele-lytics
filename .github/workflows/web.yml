@@ -3,10 +3,10 @@ name: web
 on:
   pull_request:
     branches: [claude/call-analytics-software-or5nao]
-    paths: ["web/**"]
+    paths: ["web/**", ".github/workflows/web.yml"]
   push:
     branches: [claude/call-analytics-software-or5nao]
-    paths: ["web/**"]
+    paths: ["web/**", ".github/workflows/web.yml"]
 
 concurrency:
   group: web-${{ github.ref }}
@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - run: npm ci
       # NEXT_PUBLIC_* vars are inlined at build time, not read from
       # wrangler.jsonc at runtime — must be present here, not just on the

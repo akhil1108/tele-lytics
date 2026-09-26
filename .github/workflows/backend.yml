@@ -3,10 +3,10 @@ name: backend
 on:
   pull_request:
     branches: [claude/call-analytics-software-or5nao]
-    paths: ["backend/**"]
+    paths: ["backend/**", ".github/workflows/backend.yml"]
   push:
     branches: [claude/call-analytics-software-or5nao]
-    paths: ["backend/**"]
+    paths: ["backend/**", ".github/workflows/backend.yml"]
 
 concurrency:
   group: backend-${{ github.ref }}
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - run: npm ci
       - run: npx wrangler deploy
         env:
