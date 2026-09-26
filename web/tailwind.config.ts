@@ -34,7 +34,12 @@ const config: Config = {
       fontFamily: {
         sans: ["system-ui", "-apple-system", "Segoe UI", "sans-serif"],
       },
-      borderRadius: { card: "10px" },
+      borderRadius: { card: "16px" },
+      boxShadow: {
+        soft: "0 1px 2px 0 rgba(16,24,32,0.04), 0 8px 24px -6px rgba(16,24,32,0.08)",
+        "soft-md": "0 2px 4px 0 rgba(16,24,32,0.04), 0 16px 32px -8px rgba(16,24,32,0.10)",
+        "soft-hover": "0 2px 4px 0 rgba(16,24,32,0.05), 0 20px 40px -8px rgba(16,24,32,0.14)",
+      },
     },
   },
   plugins: [],

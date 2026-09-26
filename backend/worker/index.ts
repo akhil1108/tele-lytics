@@ -19,6 +19,24 @@ import { Container } from "@cloudflare/containers";
 interface Env {
   BACKEND: DurableObjectNamespace<Backend>;
   WORKER_TICK_SECRET: string;
+  DATABASE_URL: string;
+  SECRET_KEY: string;
+  STORAGE_BACKEND: string;
+  S3_BUCKET: string;
+  S3_REGION: string;
+  S3_ENDPOINT_URL: string;
+  AWS_ACCESS_KEY_ID: string;
+  AWS_SECRET_ACCESS_KEY: string;
+  APP_ENV: string;
+  ANALYSIS_PROVIDER: string;
+  WORKERS_AI_ACCOUNT_ID: string;
+  WORKERS_AI_API_TOKEN: string;
+  WORKERS_AI_MODEL: string;
+  CORS_ORIGINS: string;
+  STT_PROVIDER: string;
+  STT_ENDPOINT_URL: string;
+  STT_API_KEY: string;
+  STT_MODEL: string;
 }
 
 const TICK_INTERVAL_MS = 30_000;
@@ -34,6 +52,33 @@ export class Backend extends Container<Env> {
 
   constructor(ctx: DurableObjectState<{}>, env: Env) {
     super(ctx, env);
+
+    // Forwarded into the container's process environment — this is how
+    // app/core/config.py's Settings actually sees them (it reads os.environ,
+    // not Wrangler bindings). Same names as .env.example, sourced from
+    // Worker vars/secrets instead of a .env file that never ships.
+    this.envVars = {
+      DATABASE_URL: env.DATABASE_URL,
+      SECRET_KEY: env.SECRET_KEY,
+      WORKER_TICK_SECRET: env.WORKER_TICK_SECRET,
+      STORAGE_BACKEND: env.STORAGE_BACKEND,
+      S3_BUCKET: env.S3_BUCKET,
+      S3_REGION: env.S3_REGION,
+      S3_ENDPOINT_URL: env.S3_ENDPOINT_URL,
+      AWS_ACCESS_KEY_ID: env.AWS_ACCESS_KEY_ID,
+      AWS_SECRET_ACCESS_KEY: env.AWS_SECRET_ACCESS_KEY,
+      APP_ENV: env.APP_ENV,
+      ANALYSIS_PROVIDER: env.ANALYSIS_PROVIDER,
+      WORKERS_AI_ACCOUNT_ID: env.WORKERS_AI_ACCOUNT_ID,
+      WORKERS_AI_API_TOKEN: env.WORKERS_AI_API_TOKEN,
+      WORKERS_AI_MODEL: env.WORKERS_AI_MODEL,
+      CORS_ORIGINS: env.CORS_ORIGINS,
+      STT_PROVIDER: env.STT_PROVIDER,
+      STT_ENDPOINT_URL: env.STT_ENDPOINT_URL,
+      STT_API_KEY: env.STT_API_KEY,
+      STT_MODEL: env.STT_MODEL,
+    };
+
     // Async work can't happen directly in a constructor — block the DO's
     // first request until the initial alarm is scheduled.
     ctx.blockConcurrencyWhile(async () => {

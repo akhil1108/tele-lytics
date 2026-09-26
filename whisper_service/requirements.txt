@@ -26,6 +26,11 @@ torchaudio==2.4.1
 transformers==4.46.3
 accelerate>=0.33
 soundfile>=0.12
+# pyannote.audio's segmentation task module imports matplotlib.pyplot
+# unconditionally at import time (for an optional plotting path we never use)
+# — undeclared as one of its own dependencies, so it must be pinned here or
+# the diarization pipeline fails to import at all.
+matplotlib>=3.8
 
 # Gated model — accept terms at huggingface.co/pyannote/speaker-diarization-3.1
 # AND huggingface.co/pyannote/segmentation-3.0 before HF_TOKEN can download it.

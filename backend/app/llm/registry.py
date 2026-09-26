@@ -37,6 +37,10 @@ def get_analysis_provider() -> AnalysisProvider:
         from app.llm.analysis.claude import ClaudeAnalysisProvider
 
         provider = ClaudeAnalysisProvider()
+    elif settings.analysis_provider == "workers_ai":
+        from app.llm.analysis.workers_ai import WorkersAiAnalysisProvider
+
+        provider = WorkersAiAnalysisProvider()
     else:
         from app.llm.analysis.mock import MockAnalysisProvider
 

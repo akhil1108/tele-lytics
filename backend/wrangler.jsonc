@@ -5,9 +5,26 @@
   "compatibility_date": "2026-09-23",
   "compatibility_flags": ["nodejs_compat"],
 
-  // WORKER_TICK_SECRET must match the backend's own env var of the same
-  // name (see .env.example) — set as a Worker secret, not a plaintext var:
-  //   npx wrangler secret put WORKER_TICK_SECRET
+  // Non-secret config, forwarded into the container's env by worker/index.ts.
+  // Credentials (DATABASE_URL, SECRET_KEY, WORKER_TICK_SECRET, AWS keys) are
+  // set separately as Worker secrets, never as plaintext vars here:
+  //   npx wrangler secret bulk <file-of-KEY=VALUE-lines>
+  // Re-run that after rotating any of them; `wrangler secret list` shows
+  // which names are currently set (not their values).
+  "vars": {
+    "STORAGE_BACKEND": "s3",
+    "S3_BUCKET": "tele-lytics-recordings",
+    "S3_REGION": "auto",
+    "S3_ENDPOINT_URL": "https://2e5f25c9cc7e9c3ecf42b7810e64108d.r2.cloudflarestorage.com",
+    "APP_ENV": "production",
+    "ANALYSIS_PROVIDER": "workers_ai",
+    "WORKERS_AI_ACCOUNT_ID": "2e5f25c9cc7e9c3ecf42b7810e64108d",
+    "WORKERS_AI_MODEL": "@cf/ibm-granite/granite-4.0-h-micro",
+    "CORS_ORIGINS": "https://tele-lytics-web.mathakhilesh.workers.dev",
+    "STT_PROVIDER": "shared_model",
+    "STT_ENDPOINT_URL": "https://akhilesh1108-tele-lytics-whisper.hf.space/transcribe",
+    "STT_MODEL": "openai/whisper-large-v3"
+  },
   "containers": [
     {
       "class_name": "Backend",

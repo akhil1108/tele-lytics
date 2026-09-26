@@ -6,7 +6,7 @@ Implements `docs/STT_CONTRACT.md` from the main repo — this is a drop-in for
 
     STT_PROVIDER=shared_model
     STT_ENDPOINT_URL=http://localhost:8001/transcribe
-    STT_MODEL=openai/whisper-large-v3-turbo
+    STT_MODEL=openai/whisper-large-v3
     STT_API_KEY=<same value as SERVICE_API_KEY below, if set>
 """
 
@@ -135,7 +135,9 @@ def _run_pipeline(wav_path: str, meta: dict) -> dict:
 
     return {
         "provider": "whisper-service",
-        "model": settings.openai_translation_model if translate else settings.whisper_model,
+        "model": settings.openai_translation_model
+        if translate
+        else models.model_for_language(meta.get("language")),
         "language": meta.get("language"),
         "translated_from": meta.get("language") if translate else None,
         "text": full_text,
